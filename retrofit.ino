@@ -1,69 +1,14 @@
-/* Mk2_bothDisplays_4.ino
- *
- *  (initially released as Mk2_bothDisplays_1 in March 2014)
- * This sketch is for diverting suplus PV power to a dump load using a triac or  
- * Solid State Relay. It is based on the Mk2i PV Router code that I have posted in on  
- * the OpenEnergyMonitor forum.  The original version, and other related material, 
- * can be found on my Summary Page at www.openenergymonitor.org/emon/node/1757
- *
- * In this latest version, the pin-allocations have been changed to suit my 
- * PCB-based hardware for the Mk2 PV Router.  The integral voltage sensor is 
- * fed from one of the secondary coils of the transformer.  Current is measured 
- * via Current Transformers at the CT1 and CT1 ports.  
- * 
- * CT1 is for 'grid' current, to be measured at the grid supply point.
- * CT2 is for the load current, so that diverted energy can be recorded
- *
- * A persistence-based 4-digit display is supported. This can be driven in two
- * different ways, one with an extra pair of logic chips, and one without.  The 
- * appropriate version of the sketch must be selected by including or commenting 
- * out the "#define PIN_SAVING_HARDWARE" statement near the top of the code.
- *
- * September 2014: renamed as Mk2_bothDisplays_2, with these changes:
- * - cycleCount removed (was not actually used in this sketch, but could have overflowed);
- * - removal of unhelpful comments in the IO pin section;
- * - tidier initialisation of display logic in setup();
- * - addition of REQUIRED_EXPORT_IN_WATTS logic (useful as a built-in PV simulation facility);
- *
- * December 2014: renamed as Mk2_bothDisplays_3, with these changes:
- * - persistence check added for zero-crossing detection (polarityConfirmed)
- * - lowestNoOfSampleSetsPerMainsCycle added, to check for any disturbances
- *
- * December 2014: renamed as Mk2_bothDisplays_3a, with some typographical errors fixed.
- *
- * January 2016: renamed as Mk2_bothDisplays_3b, with a minor change in the ISR to 
- *   remove a timing uncertainty.
- *
- * January 2016: updated to Mk2_bothDisplays_3c:
- *   The variables to store the ADC results are now declared as "volatile" to remove 
- *   any possibility of incorrect operation due to optimisation by the compiler.
- *
- * February 2016: updated to Mk2_bothDisplays_4, with these changes:
- * - improvements to the start-up logic.  The start of normal operation is now 
- *    synchronised with the start of a new mains cycle.
- * - reduce the amount of feedback in the Low Pass Filter for removing the DC content
- *     from the Vsample stream. This resolves an anomaly which has been present since 
- *     the start of this project.  Although the amount of feedback has previously been 
- *     excessive, this anomaly has had minimal effect on the system's overall behaviour.
- * - removal of the unhelpful "triggerNeedsToBeArmed" mechanism
- * - tidying of the "confirmPolarity" logic to make its behaviour more clear
- * - SWEETZONE_IN_JOULES changed to WORKING_RANGE_IN_JOULES 
- * - change "triac" to "load" wherever appropriate
- *
- *      Robin Emley
- *      www.Mk2PVrouter.co.uk
+/*
+ * retrofit.ino -- RetroFiT sketch
  */
 
 #include <Arduino.h> 
 #include <TimerOne.h>
 
 void timerIsr(void);
-void configureParamsForSelectedOutputMode();
 void allGeneralProcessing();
 void confirmPolarity();
-void configureValueForDisplay();
 void checkOutputModeSelection();
-void refreshDisplay();
 
 int freeRam () {
   extern int __heap_start, *__brkval; 
@@ -87,34 +32,11 @@ int freeRam () {
 #define ANTI_CREEP_LIMIT 5 // in Joules per mains cycle (has no effect when set to 0)
 long antiCreepLimit_inIEUperMainsCycle;
 
-//  The two versions of the hardware require different logic.  The following line should 
-//  be included if the additional logic chips are present, or excluded if they are 
-//  absent (in which case some wire links need to be fitted)
-//
-#define PIN_SAVING_HARDWARE 
-
 // definition of enumerated types
 enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
-enum outputModes {ANTI_FLICKER, NORMAL};
 
-// ----------------  Extra Features selection ----------------------
-//
-// - WORKLOAD_CHECK, for determining how much spare processing time there is. 
-//  
-// #define WORKLOAD_CHECK  // <-- Include this line is this feature is required 
-
-
-// The power-diversion logic can operate in either of two modes:
-//
-// - NORMAL, where the load switches rapidly on/off to maintain a constant energy level.
-// - ANTI_FLICKER, whereby the repetition rate is reduced to avoid rapid fluctuations
-//    of the local mains voltage.
-//
-// The output mode is determined in realtime via a selector switch
-enum outputModes outputMode;                                                   
-
-// allocation of digital pins which are not dependent on the display type that is in use
+// Allocation of digital pins which are not dependent on the display type that is in use
 // *************************************************************************************
 const byte outputModeSelectorPin = 3; // <-- an input which uses the internal pullup 
 const byte outputForTrigger = 4; // <-- an output which is active-low
@@ -138,8 +60,6 @@ long energyInBucket_long;          // in Integer Energy Units
 long capacityOfEnergyBucket_long;  // depends on powerCal, frequency & the 'sweetzone' size.
 long lowerEnergyThreshold_long;    // for turning load off
 long upperEnergyThreshold_long;    // for turning load on
-// int phaseCal_grid_int;             // to avoid the need for floating-point maths
-// int phaseCal_diverted_int;         // to avoid the need for floating-point maths
 long DCoffset_V_long;              // <--- for LPF
 long DCoffset_V_min;               // <--- for LPF
 long DCoffset_V_max;               // <--- for LPF
@@ -256,10 +176,6 @@ const byte noOfPossibleCharacters = 22;
 #define MAX_DISPLAY_TIME_COUNT 10// no of processing loops between display updates
 #define UPDATE_PERIOD_FOR_DISPLAYED_DATA 50 // mains cycles
 #define DISPLAY_SHUTDOWN_IN_HOURS 8 // auto-reset after this period of inactivity
-// #define DISPLAY_SHUTDOWN_IN_HOURS 0.01 // for testing that the display clears after 36 seconds
-
-//  The two versions of the hardware require different logic.
-#ifdef PIN_SAVING_HARDWARE
 
 #define DRIVER_CHIP_DISABLED HIGH
 #define DRIVER_CHIP_ENABLED LOW
@@ -277,43 +193,41 @@ byte digitSelectionLine[noOfDigitSelectionLines] = {7,9,8,6};
 // The final column of digitValueMap[] is for the decimal point status.  In this version, 
 // the decimal point has to be treated differently than the other seven segments, so 
 // a convenient means of accessing this column is provided.
-//
+
 byte digitValueMap[noOfPossibleCharacters][noOfDigitSelectionLines +1] = {
-                 LOW , LOW , LOW , LOW , LOW , // '0' <- element 0
-                 LOW , LOW , LOW , HIGH, LOW , // '1' <- element 1
-                 LOW , LOW , HIGH, LOW , LOW , // '2' <- element 2
-                 LOW , LOW , HIGH, HIGH, LOW , // '3' <- element 3
-                 LOW , HIGH, LOW , LOW , LOW , // '4' <- element 4
-                 LOW , HIGH, LOW , HIGH, LOW , // '5' <- element 5
-                 LOW , HIGH, HIGH, LOW , LOW , // '6' <- element 6
-                 LOW , HIGH, HIGH, HIGH, LOW , // '7' <- element 7
-                 HIGH, LOW , LOW , LOW , LOW , // '8' <- element 8
-                 HIGH, LOW , LOW , HIGH, LOW , // '9' <- element 9
-                 LOW , LOW , LOW , LOW , HIGH, // '0.' <- element 10
-                 LOW , LOW , LOW , HIGH, HIGH, // '1.' <- element 11
-                 LOW , LOW , HIGH, LOW , HIGH, // '2.' <- element 12
-                 LOW , LOW , HIGH, HIGH, HIGH, // '3.' <- element 13
-                 LOW , HIGH, LOW , LOW , HIGH, // '4.' <- element 14
-                 LOW , HIGH, LOW , HIGH, HIGH, // '5.' <- element 15
-                 LOW , HIGH, HIGH, LOW , HIGH, // '6.' <- element 16
-                 LOW , HIGH, HIGH, HIGH, HIGH, // '7.' <- element 17
-                 HIGH, LOW , LOW , LOW , HIGH, // '8.' <- element 18
-                 HIGH, LOW , LOW , HIGH, HIGH, // '9.' <- element 19
-                 HIGH, HIGH, HIGH, HIGH, LOW , // ' '  <- element 20          
-                 HIGH, HIGH, HIGH, HIGH, HIGH  // '.'  <- element 21
+  LOW , LOW , LOW , LOW , LOW , // '0' <- element 0
+  LOW , LOW , LOW , HIGH, LOW , // '1' <- element 1
+  LOW , LOW , HIGH, LOW , LOW , // '2' <- element 2
+  LOW , LOW , HIGH, HIGH, LOW , // '3' <- element 3
+  LOW , HIGH, LOW , LOW , LOW , // '4' <- element 4
+  LOW , HIGH, LOW , HIGH, LOW , // '5' <- element 5
+  LOW , HIGH, HIGH, LOW , LOW , // '6' <- element 6
+  LOW , HIGH, HIGH, HIGH, LOW , // '7' <- element 7
+  HIGH, LOW , LOW , LOW , LOW , // '8' <- element 8
+  HIGH, LOW , LOW , HIGH, LOW , // '9' <- element 9
+  LOW , LOW , LOW , LOW , HIGH, // '0.' <- element 10
+  LOW , LOW , LOW , HIGH, HIGH, // '1.' <- element 11
+  LOW , LOW , HIGH, LOW , HIGH, // '2.' <- element 12
+  LOW , LOW , HIGH, HIGH, HIGH, // '3.' <- element 13
+  LOW , HIGH, LOW , LOW , HIGH, // '4.' <- element 14
+  LOW , HIGH, LOW , HIGH, HIGH, // '5.' <- element 15
+  LOW , HIGH, HIGH, LOW , HIGH, // '6.' <- element 16
+  LOW , HIGH, HIGH, HIGH, HIGH, // '7.' <- element 17
+  HIGH, LOW , LOW , LOW , HIGH, // '8.' <- element 18
+  HIGH, LOW , LOW , HIGH, HIGH, // '9.' <- element 19
+  HIGH, HIGH, HIGH, HIGH, LOW , // ' '  <- element 20          
+  HIGH, HIGH, HIGH, HIGH, HIGH  // '.'  <- element 21
 };
 
 // a tidy means of identifying the DP status data when accessing the above table
 const byte DPstatus_columnID = noOfDigitSelectionLines; 
 
 byte digitLocationMap[noOfDigitLocations][noOfDigitLocationLines] = {
-                 LOW , LOW ,    // Digit 1
-                 LOW , HIGH,    // Digit 2
-                 HIGH, LOW ,    // Digit 3
-                 HIGH, HIGH,    // Digit 4
+  LOW , LOW ,    // Digit 1
+  LOW , HIGH,    // Digit 2
+  HIGH, LOW ,    // Digit 3
+  HIGH, HIGH,    // Digit 4
 };
-
-#else // PIN_SAVING_HARDWARE
 
 #define ON HIGH
 #define OFF LOW
@@ -323,37 +237,6 @@ enum digitEnableStates {DIGIT_ENABLED, DIGIT_DISABLED};
 
 byte digitSelectorPin[noOfDigitLocations] = {16,10,13,11};
 byte segmentDrivePin[noOfSegmentsPerDigit] = {2,5,12,6,7,9,8,14};
-
-// The final column of segMap[] is for the decimal point status.  In this version, 
-// the decimal point is treated just like all the other segments, so there is
-// no need to access this column specifically.
-//
-byte segMap[noOfPossibleCharacters][noOfSegmentsPerDigit] = {
-                 ON , ON , ON , ON , ON , ON , OFF, OFF, // '0' <- element 0
-                 OFF, ON , ON , OFF, OFF, OFF, OFF, OFF, // '1' <- element 1
-                 ON , ON , OFF, ON , ON , OFF, ON , OFF, // '2' <- element 2
-                 ON , ON , ON , ON , OFF, OFF, ON , OFF, // '3' <- element 3
-                 OFF, ON , ON , OFF, OFF, ON , ON , OFF, // '4' <- element 4
-                 ON , OFF, ON , ON , OFF, ON , ON , OFF, // '5' <- element 5
-                 ON , OFF, ON , ON , ON , ON , ON , OFF, // '6' <- element 6
-                 ON , ON , ON , OFF, OFF, OFF, OFF, OFF, // '7' <- element 7
-                 ON , ON , ON , ON , ON , ON , ON , OFF, // '8' <- element 8
-                 ON , ON , ON , ON , OFF, ON , ON , OFF, // '9' <- element 9
-                 ON , ON , ON , ON , ON , ON , OFF, ON , // '0.' <- element 10
-                 OFF, ON , ON , OFF, OFF, OFF, OFF, ON , // '1.' <- element 11
-                 ON , ON , OFF, ON , ON , OFF, ON , ON , // '2.' <- element 12
-                 ON , ON , ON , ON , OFF, OFF, ON , ON , // '3.' <- element 13
-                 OFF, ON , ON , OFF, OFF, ON , ON , ON , // '4.' <- element 14
-                 ON , OFF, ON , ON , OFF, ON , ON , ON , // '5.' <- element 15
-                 ON , OFF, ON , ON , ON , ON , ON , ON , // '6.' <- element 16
-                 ON , ON , ON , OFF, OFF, OFF, OFF, ON , // '7.' <- element 17
-                 ON , ON , ON , ON , ON , ON , ON , ON , // '8.' <- element 18
-                 ON , ON , ON , ON , OFF, ON , ON , ON , // '9.' <- element 19
-                 OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, // ' ' <- element 20
-                 OFF, OFF, OFF, OFF, OFF, OFF, OFF, ON  // '.' <- element 11
-};
-#endif // PIN_SAVING_HARDWARE
-
 byte charsForDisplay[noOfDigitLocations] = {20,20,20,20}; // all blank 
 
 boolean EDD_isActive = false; // energy divertion detection
@@ -365,12 +248,6 @@ void setup()
   pinMode(outputForTrigger, OUTPUT);  
   digitalWrite (outputForTrigger, LOAD_OFF); // the external trigger is active low
   
-  pinMode(outputModeSelectorPin, INPUT);
-  digitalWrite(outputModeSelectorPin, HIGH); // enable the internal pullup resistor
-  delay (100); // allow time to settle
-  int pinState = digitalRead(outputModeSelectorPin);  // initial selection and
-  outputMode = (enum outputModes)pinState;            //   assignment of output mode
- 
   delay(delayBeforeSerialStarts * 1000); // allow time to open Serial monitor      
  
   Serial.begin(9600);
@@ -379,44 +256,8 @@ void setup()
   Serial.println("Sketch ID:      Mk2_bothDisplays_4.ino");
   Serial.println();
        
-#ifdef PIN_SAVING_HARDWARE
-  // configure the IO drivers for the 4-digit display   
-  //
-  // the Decimal Point line is driven directly from the processor
-  pinMode(decimalPointLine, OUTPUT); // the 'decimal point' line 
-  
-  // set up the control lines for the 74HC4543 7-seg display driver
-  for (int i = 0; i < noOfDigitSelectionLines; i++) {
-    pinMode(digitSelectionLine[i], OUTPUT); }
-
-  // an enable line is required for the 74HC4543 7-seg display driver
-  pinMode(enableDisableLine, OUTPUT); // for the 74HC4543 7-seg display driver
-  digitalWrite( enableDisableLine, DRIVER_CHIP_DISABLED);  
-  
-  // set up the control lines for the 74HC138 2->4 demux
-  for (int i = 0; i < noOfDigitLocationLines; i++) {
-    pinMode(digitLocationLine[i], OUTPUT); } 
-#else
-  for (int i = 0; i < noOfSegmentsPerDigit; i++) {
-    pinMode(segmentDrivePin[i], OUTPUT); }
-  
-  for (int i = 0; i < noOfDigitLocations; i++) {
-    pinMode(digitSelectorPin[i], OUTPUT); }
-    
-   for (int i = 0; i < noOfDigitLocations; i++) {
-    digitalWrite(digitSelectorPin[i], DIGIT_DISABLED); }
-  
-  for (int i = 0; i < noOfSegmentsPerDigit; i++) {
-    digitalWrite(segmentDrivePin[i], OFF); }
-#endif
-      
-  
-       
   // When using integer maths, calibration values that have supplied in floating point 
   // form need to be rescaled.  
-  //
-//  phaseCal_grid_int = phaseCal_grid * 256; // for integer maths
-//  phaseCal_diverted_int = phaseCal_diverted * 256; // for integer maths
   
   // When using integer maths, the SIZE of the ENERGY BUCKET is altered to match the
   // scaling of the energy detection mechanism that is in use.  This avoids the need 
@@ -474,21 +315,9 @@ void setup()
   Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
 
   Serial.print ( "Output mode:    ");
-  if (outputMode == NORMAL) {
-    Serial.println ( "normal"); }
-  else 
-  {  
-    Serial.println ( "anti-flicker");
-    Serial.print ( "  offsetOfEnergyThresholds  = ");
-    Serial.println ( offsetOfEnergyThresholdsInAFmode);    
-  }
+  Serial.println ( "normal");
     
   Serial.print ( "Extra Features: ");  
-#ifdef WORKLOAD_CHECK  
-  Serial.println ( "WORKLOAD_CHECK ");
-#else
-    Serial.println ("none"); 
-#endif
   Serial.println ();
         
   Serial.print ( "powerCal_grid =      "); Serial.println (powerCal_grid,4);
@@ -503,28 +332,7 @@ void setup()
   Serial.println (PERSISTENCE_FOR_POLARITY_CHANGE);
   Serial.print ("continuity sampling display rate (mains cycles) = ");
   Serial.println (CONTINUITY_CHECK_MAXCOUNT);  
-  
-  configureParamsForSelectedOutputMode(); 
-
   Serial.println ("----");    
-
-#ifdef WORKLOAD_CHECK
-   Serial.println ("WELCOME TO WORKLOAD_CHECK ");
-  
-//   <<- start of commented out section, to save on RAM space!
-/*   
-   Serial.println ("  This mode of operation allows the spare processing capacity of the system");
-   Serial.println ("to be analysed.  Additional delay is gradually increased until all spare time");
-   Serial.println ("has been used up.  This value (in uS) is noted and the process is repeated.  ");
-   Serial.println ("The delay setting is increased by 1uS at a time, and each value of delay is ");
-   Serial.println ("checked several times before the delay is increased. "); 
- */ 
-//  <<- end of commented out section, to save on RAM space!
-
-   Serial.println ("  The displayed value is the amount of spare time, per set of V & I samples, ");
-   Serial.println ("that is available for doing additional processing.");
-   Serial.println ();
- #endif
 }
 
 // An Interrupt Service Routine is now defined in which the ADC is instructed to 
@@ -543,7 +351,6 @@ void timerIsr(void)
   static unsigned char sample_index = 0;
   static int  sampleI_grid_raw;
   static int sampleI_diverted_raw;
-
 
   switch(sample_index)
   {
@@ -588,59 +395,12 @@ void timerIsr(void)
 //
 void loop()             
 { 
-#ifdef WORKLOAD_CHECK
-  static int del = 0; // delay, as passed to delayMicroseconds()
-  static int res = 0; // result, to be displayed at the next opportunity
-  static byte count = 0; // to allow multiple runs per setting
-  static byte displayFlag = 0; // to determine when printing may occur
-#endif
-  
   if (dataReady)   // flag is set after every set of ADC conversions
-  {
-    dataReady = false; // reset the flag
-    allGeneralProcessing(); // executed once for each set of V&I samples
-    
-#ifdef WORKLOAD_CHECK 
-    delayMicroseconds(del); // <--- to assess how much spare time there is
-    if (dataReady)       // if data is ready again, delay was too long
-    { 
-      res = del;             // note the exact value
-      del = 1;               // and start again with 1us delay   
-      count = 0;
-      displayFlag = 0;   
-    }
-    else
     {
-      count++;          // to give several runs with the same value
-      if (count > 50)
-      {
-        count = 0;
-        del++;          //  increase delay by 1uS
-      } 
+      dataReady = false; // reset the flag
+      allGeneralProcessing(); // executed once for each set of V&I samples
     }
-#endif  
-
-  }  // <-- this closing brace needs to be outside the WORKLOAD_CHECK blocks! 
-  
-#ifdef WORKLOAD_CHECK 
-  switch (displayFlag) 
-  {
-    case 0: // the result is available now, but don't display until the next loop
-      displayFlag++;
-      break;
-    case 1: // with minimum delay, it's OK to print now
-      Serial.print(res);
-      displayFlag++;
-      break;
-    case 2: // with minimum delay, it's OK to print now
-      Serial.println("uS");
-      displayFlag++;
-      break;
-    default:; // for most of the time, displayFlag is 3           
-  }
-#endif
-  
-} // end of loop()
+}
 
 
 // This routine is called to process each set of V & I samples. The main processor and 
@@ -662,10 +422,10 @@ void allGeneralProcessing()
   long sampleVminusDC_long = ((long)sampleV<<8) - DCoffset_V_long; 
 
   // determine the polarity of the latest voltage sample
-  if(sampleVminusDC_long > 0) { 
-    polarityOfMostRecentVsample = POSITIVE; }
-  else { 
-    polarityOfMostRecentVsample = NEGATIVE; }
+  if(sampleVminusDC_long > 0)
+    polarityOfMostRecentVsample = POSITIVE;
+  else
+    polarityOfMostRecentVsample = NEGATIVE;
   confirmPolarity();
   
   if (polarityConfirmed == POSITIVE) 
@@ -725,11 +485,10 @@ void allGeneralProcessing()
         // Apply max and min limits to bucket's level.  This is to ensure correct operation
         // when conditions change, i.e. when import changes to export, and vici versa.
         //
-        if (energyInBucket_long > capacityOfEnergyBucket_long) { 
-          energyInBucket_long = capacityOfEnergyBucket_long; } 
-        else         
-        if (energyInBucket_long < 0) {
-          energyInBucket_long = 0; }  
+        if (energyInBucket_long > capacityOfEnergyBucket_long)
+          energyInBucket_long = capacityOfEnergyBucket_long;
+        else if (energyInBucket_long < 0)
+	    energyInBucket_long = 0;  
   
         if (EDD_isActive) // Energy Diversion Display
         {
@@ -737,9 +496,7 @@ void allGeneralProcessing()
           // accumulator which operates with maximum precision.
           
           if (realEnergy_diverted < antiCreepLimit_inIEUperMainsCycle)
-          {
             realEnergy_diverted = 0;
-          }  
 
           divertedEnergyRecent_IEU += realEnergy_diverted;
       
@@ -766,13 +523,9 @@ void allGeneralProcessing()
             divertedEnergyRecent_IEU = 0;
             EDD_isActive = false; // energy diversion detector is now inactive
           }
-
-          configureValueForDisplay();
         }
         else
-        {
           timerForDisplayUpdate++;
-        }
 
         // continuity checker
         sampleCount_forContinuityChecker++;
@@ -787,7 +540,6 @@ void allGeneralProcessing()
         sampleSetsDuringThisMainsCycle = 0;
         sumP_grid = 0;
         sumP_diverted = 0;
-
       }
       else
       {  
@@ -811,26 +563,27 @@ void allGeneralProcessing()
     {
       if (beyondStartUpPhase)
       {           
-        if (energyInBucket_long < lowerEnergyThreshold_long) {
+        if (energyInBucket_long < lowerEnergyThreshold_long)
           // when below the lower threshold, always set the load to "off" 
-          nextStateOfLoad = LOAD_OFF; }
-        else
-        if (energyInBucket_long > upperEnergyThreshold_long) {
+          nextStateOfLoad = LOAD_OFF;
+        else if (energyInBucket_long > upperEnergyThreshold_long)
           // when above the upper threshold, always set the load to "off"
-          nextStateOfLoad = LOAD_ON; }
-        else {
+          nextStateOfLoad = LOAD_ON;
+        else
           // otherwise, leave the load's state unchanged (hysteresis)
-             }          
+	  ;
                   
         // set the Arduino's output pin accordingly, and clear the flag
         digitalWrite(outputForTrigger, nextStateOfLoad);   
       
         // update the Energy Diversion Detector
-        if (nextStateOfLoad == LOAD_ON) {
-          absenceOfDivertedEnergyCount = 0; 
-          EDD_isActive = true; }            
-        else {
-          absenceOfDivertedEnergyCount++; }   
+        if (nextStateOfLoad == LOAD_ON)
+	  {
+	    absenceOfDivertedEnergyCount = 0; 
+	    EDD_isActive = true;
+	  }
+        else
+          absenceOfDivertedEnergyCount++;
       }
     }    
   } // end of processing that is specific to samples where the voltage is positive
@@ -857,8 +610,6 @@ void allGeneralProcessing()
       else  
       if (DCoffset_V_long > DCoffset_V_max) {
         DCoffset_V_long = DCoffset_V_max; }
-        
-      checkOutputModeSelection(); // updates outputMode if switch is changed
            
     } // end of processing that is specific to the first Vsample in each -ve half cycle
   } // end of processing that is specific to samples where the voltage is negative
@@ -905,259 +656,28 @@ void allGeneralProcessing()
   cumVdeltasThisCycle_long += sampleVminusDC_long; // for use with LP filter
   lastSampleVminusDC_long = sampleVminusDC_long;  // required for phaseCal algorithm
   polarityConfirmedOfLastSampleV = polarityConfirmed;  // for identification of half cycle boundaries
-
-  refreshDisplay();
 }
-//  ----- end of main Mk2i code -----
+
+
+/* This routine prevents a zero-crossing point from being declared until 
+ * a certain number of consecutive samples in the 'other' half of the 
+ * waveform have been encountered.  */
 
 void confirmPolarity()
 {
-  /* This routine prevents a zero-crossing point from being declared until 
-   * a certain number of consecutive samples in the 'other' half of the 
-   * waveform have been encountered.  
-   */ 
   static byte count = 0;
-  if (polarityOfMostRecentVsample != polarityConfirmedOfLastSampleV) { 
-    count++; }  
-  else {
-    count = 0; }
-    
-  if (count > PERSISTENCE_FOR_POLARITY_CHANGE)
-  {
-    count = 0;
-    polarityConfirmed = polarityOfMostRecentVsample;
-  }
-}
-
-
-
-// this function changes the value of outputMode if the state of the external switch is altered 
-void checkOutputModeSelection()  
-{
-  static byte count = 0;
-  int pinState = digitalRead(outputModeSelectorPin);
-  if (pinState != outputMode)
-  {
+  if (polarityOfMostRecentVsample != polarityConfirmedOfLastSampleV)
     count++;
-  }  
-  if (count >= 20)
-  {
+  else
     count = 0;
-    outputMode = (enum outputModes)pinState;  // change the global variable
-    Serial.print ("outputMode selection changed to ");
-    if (outputMode == NORMAL) {
-      Serial.println ( "normal"); }
-    else {  
-      Serial.println ( "anti-flicker"); }
-    
-    configureParamsForSelectedOutputMode();
-  }
+
+  if (count > PERSISTENCE_FOR_POLARITY_CHANGE)
+    {
+      count = 0;
+      polarityConfirmed = polarityOfMostRecentVsample;
+    }
 }
 
-
-void configureParamsForSelectedOutputMode()
-{
-  if (outputMode == ANTI_FLICKER)
-  {
-    // settings for anti-flicker mode
-    lowerEnergyThreshold_long = 
-       capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode); 
-    upperEnergyThreshold_long = 
-       capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);   
-  }
-  else
-  { 
-    // settings for normal mode
-    lowerEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5; 
-    upperEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;   
-  }
-  
-  // display relevant settings for selected output mode
-  Serial.print("  capacityOfEnergyBucket_long = ");
-  Serial.println(capacityOfEnergyBucket_long);
-  Serial.print("  lowerEnergyThreshold_long   = ");
-  Serial.println(lowerEnergyThreshold_long);
-  Serial.print("  upperEnergyThreshold_long   = ");
-  Serial.println(upperEnergyThreshold_long);
-  
-  Serial.print(">>free RAM = ");
-  Serial.println(freeRam());  // a useful value to keep an eye on
-}
-
-// called infrequently, to update the characters to be displayed
-void configureValueForDisplay()
-{
-  static byte locationOfDot = 0;
-  
-//  Serial.println(divertedEnergyTotal_Wh);
-  
-  if (EDD_isActive)
-  {
-    unsigned int val = divertedEnergyTotal_Wh;
-    boolean energyValueExceeds10kWh;
-
-    if (val < 10000) {
-      // no need to re-scale (display to 3 DPs)
-      energyValueExceeds10kWh = false; }
-    else {
-      // re-scale is needed (display to 2 DPs)
-      energyValueExceeds10kWh = true;
-      val = val/10; }
-      
-    byte thisDigit = val / 1000;
-    charsForDisplay[0] = thisDigit;     
-    val -= 1000 * thisDigit;
-        
-    thisDigit = val / 100;
-    charsForDisplay[1] = thisDigit;        
-    val -= 100 * thisDigit;
-        
-    thisDigit = val / 10;
-    charsForDisplay[2] = thisDigit;        
-    val -= 10 * thisDigit;
-        
-    charsForDisplay[3] = val; 
-  
-    // assign the decimal point location
-    if (energyValueExceeds10kWh) {
-      charsForDisplay[1] += 10; } // dec point after 2nd digit
-    else {
-      charsForDisplay[0] += 10; } // dec point after 1st digit
-  }
-  else
-  {
-    // "walking dots" display
-    charsForDisplay[locationOfDot] = 20; // blank
-    
-    locationOfDot++;
-    if (locationOfDot >= noOfDigitLocations) {
-     locationOfDot = 0; }
-     
-    charsForDisplay[locationOfDot] = 21; // dot
-  }
-/*  
-  Serial.print(charsForDisplay[0]);
-  Serial.print("  "); 
-  Serial.print(charsForDisplay[1]);
-  Serial.print("  "); 
-  Serial.print(charsForDisplay[2]);
-  Serial.print("  "); 
-  Serial.print(charsForDisplay[3]);
-  Serial.println(); 
-*/  
-//  valueToBeDisplayed++;
-}
-
-void refreshDisplay()
-{
-  // This routine keeps track of which digit is being displayed and checks when its 
-  // display time has expired.  It then makes the necessary adjustments for displaying
-  // the next digit.
-  //   The two versions of the hardware require different logic.
- 
-#ifdef PIN_SAVING_HARDWARE
-  // With this version of the hardware, care must be taken that all transitory states
-  // are masked out.  Note that the enableDisableLine only masks the seven primary
-  // segments, not the Decimal Point line which must therefore be treated separately.
-  // The sequence is:
-  // 
-  // 1. set the decimal point line to 'off'
-  // 2. disable the 7-segment driver chip 
-  // 3. determine the next location which is to be active
-  // 4. set up the location lines for the new active location
-  // 5. determine the relevant character for the new active location
-  // 6. configure the driver chip for the new character to be displayed
-  // 7. set up decimal point line for the new active location
-  // 8. enable the 7-segment driver chip 
-  
-  static byte displayTime_count = 0;
-  static byte digitLocationThatIsActive = 0;
-  
-  displayTime_count++;
-  
-  if (displayTime_count > MAX_DISPLAY_TIME_COUNT)
-  {
-    byte lineState;
-    
-    displayTime_count = 0;   
-
-    // 1. disable the Decimal Point driver line;
-      digitalWrite( decimalPointLine, LOW); 
-        
-    // 2. disable the driver chip while changes are taking place
-    digitalWrite( enableDisableLine, DRIVER_CHIP_DISABLED);  
-
-    // 3. determine the next digit location to be active
-    digitLocationThatIsActive++;
-    if (digitLocationThatIsActive >= noOfDigitLocations) {
-      digitLocationThatIsActive = 0; }
-           
-    // 4. set up the digit location drivers for the new active location
-    for (byte line = 0; line < noOfDigitLocationLines; line++) {
-      lineState = digitLocationMap[digitLocationThatIsActive][line];
-      digitalWrite( digitLocationLine[line], lineState); }
-        
-    // 5. determine the character to be displayed at this new location
-    // (which includes the decimal point information)
-    byte digitVal = charsForDisplay[digitLocationThatIsActive];
-    
-    // 6. configure the 7-segment driver for the character to be displayed 
-    for (byte line = 0; line < noOfDigitSelectionLines; line++) { 
-      lineState = digitValueMap[digitVal][line];
-      digitalWrite( digitSelectionLine[line], lineState); }
-      
-    // 7. set up the Decimal Point driver line;
-      digitalWrite( decimalPointLine, digitValueMap[digitVal][DPstatus_columnID]); 
-      
-    // 8. enable the 7-segment driver chip   
-    digitalWrite( enableDisableLine, DRIVER_CHIP_ENABLED);  
-  }
-
-#else // PIN_SAVING_HARDWARE
-
-  // This version is more straightforward because the digit-enable lines can be
-  // used to mask out all of the transitory states, including the Decimal Point.
-  // The sequence is:
-  // 
-  // 1. de-activate the digit-enable line that was previously active
-  // 2. determine the next location which is to be active
-  // 3. determine the relevant character for the new active location
-  // 4. set up the segment drivers for the character to be displayed (includes the DP)
-  // 5. activate the digit-enable line for the new active location 
- 
-  static byte displayTime_count = 0;
-  static byte digitLocationThatIsActive = 0;
-  
-  displayTime_count++;
-  
-  if (displayTime_count > MAX_DISPLAY_TIME_COUNT)
-  { 
-    displayTime_count = 0;   
-    
-    // 1. de-activate the location which is currently being displayed
-    digitalWrite(digitSelectorPin[digitLocationThatIsActive], DIGIT_DISABLED);
-   
-    // 2. determine the next digit location which is to be displayed
-    digitLocationThatIsActive++;
-    if (digitLocationThatIsActive >= noOfDigitLocations) {
-      digitLocationThatIsActive = 0; }
-           
-    // 3. determine the relevant character for the new active location
-    byte digitVal = charsForDisplay[digitLocationThatIsActive];
-    
-    // 4. set up the segment drivers for the character to be displayed (includes the DP)
-    for (byte segment = 0; segment < noOfSegmentsPerDigit; segment++) { 
-      byte segmentState = segMap[digitVal][segment];
-      digitalWrite( segmentDrivePin[segment], segmentState); }
-
-  // 5. activate the digit-enable line for the new active location 
-    digitalWrite(digitSelectorPin[digitLocationThatIsActive], DIGIT_ENABLED);   
-  } 
-#endif // PIN_SAVING_HARDWARE
-
-} // end of refreshDisplay()
-
-
-
-
-
+// settings for normal mode
+//  lowerEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5; 
+//  upperEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;   
