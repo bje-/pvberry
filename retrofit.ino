@@ -8,20 +8,14 @@
 void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
-void checkOutputModeSelection();
 
-int freeRam () {
-  extern int __heap_start, *__brkval; 
-  int v; 
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval); 
-}
 
 #define ADC_TIMER_PERIOD 125 // uS (determines the sampling rate / amount of idle time)
 
 // Physical constants, please do not change!
 #define SECONDS_PER_MINUTE 60
 #define MINUTES_PER_HOUR 60
-#define JOULES_PER_WATT_HOUR 3600 //  (0.001 kWh = 3600 Joules)
+#define JOULES_PER_WATT_HOUR 3600
 
 // Change these values to suit the local mains frequency and supply meter
 #define CYCLES_PER_SECOND 50 
@@ -32,22 +26,15 @@ int freeRam () {
 #define ANTI_CREEP_LIMIT 5 // in Joules per mains cycle (has no effect when set to 0)
 long antiCreepLimit_inIEUperMainsCycle;
 
-// definition of enumerated types
 enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
 
-// Allocation of digital pins which are not dependent on the display type that is in use
-// *************************************************************************************
-const byte outputModeSelectorPin = 3; // <-- an input which uses the internal pullup 
 const byte outputForTrigger = 4; // <-- an output which is active-low
-
-// allocation of analogue pins which are not dependent on the display type that is in use
-// **************************************************************************************
-const byte voltageSensor = 3;          // A3 is for the voltage sensor
+const byte voltageSensor = 0;          // A0 is for the voltage sensor
 const byte currentSensor_diverted = 4; // A4 is for CT2 which measures diverted current
-const byte currentSensor_grid = 5;     // A5 is for CT1 which measures grid current
+const byte currentSensor_grid = 1;     // A1 is for the CT which measures grid current
 
-const byte delayBeforeSerialStarts = 3;  // in seconds, to allow Serial window to be opened
+const byte delayBeforeSerialStarts = 2;  // in seconds, to allow Serial window to be opened
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
 const int DCoffset_I = 512;    // nominal mid-point value of ADC @ x1 scale
 
@@ -252,8 +239,7 @@ void setup()
  
   Serial.begin(9600);
   Serial.println();
-  Serial.println("-------------------------------------");
-  Serial.println("Sketch ID:      Mk2_bothDisplays_4.ino");
+  Serial.println("RetroFiT 1.0");
   Serial.println();
        
   // When using integer maths, calibration values that have supplied in floating point 
@@ -314,12 +300,6 @@ void setup()
   Timer1.initialize(ADC_TIMER_PERIOD);   // set Timer1 interval
   Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
 
-  Serial.print ( "Output mode:    ");
-  Serial.println ( "normal");
-    
-  Serial.print ( "Extra Features: ");  
-  Serial.println ();
-        
   Serial.print ( "powerCal_grid =      "); Serial.println (powerCal_grid,4);
   Serial.print ( "powerCal_diverted = "); Serial.println (powerCal_diverted,4);
   
@@ -335,17 +315,21 @@ void setup()
   Serial.println ("----");    
 }
 
-// An Interrupt Service Routine is now defined in which the ADC is instructed to 
-// measure each analogue input in sequence.  A "data ready"flag is set after each 
-// voltage conversion has been completed.  
-//   For each set of samples, the two samples for current  are taken before the one 
-// for voltage.  This is appropriate because each waveform current is generally slightly 
-// advanced relative to the waveform for voltage.  The data ready flag is cleared 
-// within loop().
-//   This Interrupt Service Routine is for use when the ADC is fixed timer mode.  It is 
-// executed whenever the ADC timer expires.  In this mode, the next ADC conversion is 
-// initiated from within this ISR.  
-//
+// An Interrupt Service Routine is now defined in which the ADC is
+// instructed to measure each analogue input in sequence.  A "data
+// ready"flag is set after each voltage conversion has been completed.
+
+// For each set of samples, the two samples for current are taken
+// before the one for voltage.  This is appropriate because each
+// waveform current is generally slightly advanced relative to the
+// waveform for voltage.  The data ready flag is cleared within
+// loop().
+
+// This Interrupt Service Routine is for use when the ADC is fixed
+// timer mode.  It is executed whenever the ADC timer expires.  In
+// this mode, the next ADC conversion is initiated from within this
+// ISR.
+
 void timerIsr(void)
 {                                         
   static unsigned char sample_index = 0;
@@ -386,16 +370,19 @@ void timerIsr(void)
 // processor clears the flag and proceeds with all the processing for one set of 
 // V & I samples.  It then returns to loop() to wait for the next set to become 
 // available.
-//   If the next set of samples become available before the processing of the 
-// previous set has been completed, data could be lost.  This situation can be 
-// avoided by prior use of the WORKLOAD_CHECK mode.  Using this facility, the amount
-// of spare processing capacity per loop can be determined.  
-//   If there is insufficient processing capacity to do all that is required, the 
-// base workload can be reduced by increasing the duration of ADC_TIMER_PERIOD.
-//
+
+// If the next set of samples become available before the processing
+// of the previous set has been completed, data could be lost.  This
+// situation can be avoided by prior use of the WORKLOAD_CHECK mode.
+// Using this facility, the amount of spare processing capacity per
+// loop can be determined.  If there is insufficient processing
+// capacity to do all that is required, the base workload can be
+// reduced by increasing the duration of ADC_TIMER_PERIOD.
+
 void loop()             
 { 
-  if (dataReady)   // flag is set after every set of ADC conversions
+  // flag is set after every set of ADC conversions
+  if (dataReady)
     {
       dataReady = false; // reset the flag
       allGeneralProcessing(); // executed once for each set of V&I samples
@@ -403,11 +390,12 @@ void loop()
 }
 
 
-// This routine is called to process each set of V & I samples. The main processor and 
-// the ADC work autonomously, their operation being only linked via the dataReady flag.  
-// As soon as a new set of data is made available by the ADC, the main processor can 
-// start to work on it immediately.  
-//
+// This routine is called to process each set of V & I samples. The
+// main processor and the ADC work autonomously, their operation being
+// only linked via the dataReady flag.  As soon as a new set of data
+// is made available by the ADC, the main processor can start to work
+// on it immediately.
+
 void allGeneralProcessing()
 {
   static long sumP_grid;                              // for per-cycle summation of 'real power' 
@@ -468,23 +456,22 @@ void allGeneralProcessing()
         // may be helpful so as to minimise confusion.  
         //   The 'energy' variable below is CYCLES_PER_SECOND * (1/powerCal) times larger than 
         // the actual energy in Joules.
-        //
+
         long realEnergy_grid = realPower_grid; 
         long realEnergy_diverted = realPower_diverted; 
-        
    
         // Energy contributions from the grid connection point (CT1) are summed in an 
         // accumulator which is known as the energy bucket.  The purpose of the energy bucket 
         // is to mimic the operation of the supply meter.  The range over which energy can 
         // pass to and fro without loss or charge to the user is known as its 'sweet-zone'.
         // The capacity of the energy bucket is set to this same value within setup().
-        //    
+
         // The latest contribution can now be added to this energy bucket
         energyInBucket_long += realEnergy_grid;   
          
         // Apply max and min limits to bucket's level.  This is to ensure correct operation
         // when conditions change, i.e. when import changes to export, and vici versa.
-        //
+
         if (energyInBucket_long > capacityOfEnergyBucket_long)
           energyInBucket_long = capacityOfEnergyBucket_long;
         else if (energyInBucket_long < 0)
@@ -508,8 +495,9 @@ void allGeneralProcessing()
           }  
         }
         
-        if(timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA) 
-        { // the 4-digit display needs to be refreshed every few mS. For convenience,
+        if (timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA) 
+        {
+	  // the 4-digit display needs to be refreshed every few mS. For convenience,
           // this action is performed every N times around this processing loop.
           timerForDisplayUpdate = 0;
           
@@ -544,7 +532,7 @@ void allGeneralProcessing()
       else
       {  
         // wait until the DC-blocking filters have had time to settle
-        if(millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000) 
+        if (millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000) 
         {
           beyondStartUpPhase = true;
           sumP_grid = 0;
@@ -621,11 +609,9 @@ void allGeneralProcessing()
   long sampleIminusDC_grid = ((long)(sampleI_grid-DCoffset_I))<<8;
    
   // phase-shift the voltage waveform so that it aligns with the grid current waveform
-//  long  phaseShiftedSampleVminusDC_grid = lastSampleVminusDC_long
-//         + (((sampleVminusDC_long - lastSampleVminusDC_long)*phaseCal_grid_int)>>8);  
   long  phaseShiftedSampleVminusDC_grid = sampleVminusDC_long; // <- simple version for when
                                                                // phaseCal is not in use
-                                                               
+  
   // calculate the "real power" in this sample pair and add to the accumulated sum
   long filtV_div4 = phaseShiftedSampleVminusDC_grid>>2;  // reduce to 16-bits (now x64, or 2^6)
   long filtI_div4 = sampleIminusDC_grid>>2; // reduce to 16-bits (now x64, or 2^6)
@@ -638,8 +624,6 @@ void allGeneralProcessing()
   long sampleIminusDC_diverted = ((long)(sampleI_diverted-DCoffset_I))<<8;
 
   // phase-shift the voltage waveform so that it aligns with the diverted current waveform
-//  long phaseShiftedSampleVminusDC_diverted = lastSampleVminusDC_long
-//         + (((sampleVminusDC_long - lastSampleVminusDC_long)*phaseCal_diverted_int)>>8);  
   long phaseShiftedSampleVminusDC_diverted = sampleVminusDC_long; // <- simple version for when
                                                                   // phaseCal is not in use
                                                                
