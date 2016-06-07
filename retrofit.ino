@@ -9,24 +9,21 @@ void confirmPolarity();
 #define ADC_TIMER_PERIOD 125 // uS (determines the sampling rate / amount of idle time)
 
 // Physical constants, please do not change!
-#define SECONDS_PER_MINUTE 60
-#define MINUTES_PER_HOUR 60
+#define SECONDS_PER_HOUR 3600
 #define JOULES_PER_WATT_HOUR 3600
 
 // Change these values to suit the local mains frequency and supply meter
 #define CYCLES_PER_SECOND 50 
 #define WORKING_RANGE_IN_JOULES 3600 
-#define REQUIRED_EXPORT_IN_WATTS 0 // when set to a negative value, this acts as a PV generator 
-
 
 enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
 
-const byte outputForTrigger = 4; // <-- an output which is active-low
+const byte outputForTrigger = 4;       // an output which is active-low
 const byte voltageSensor = 0;          // A0 is for the voltage sensor
 const byte currentSensor_grid = 1;     // A1 is for the CT which measures grid current
 
-const byte delayBeforeSerialStarts = 2;  // in seconds, to allow Serial window to be opened
+const int delayBeforeSerialStarts = 2000;  // in ms, to allow Serial window to be opened
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
 const int DCoffset_I = 512;    // nominal mid-point value of ADC @ x1 scale
 
@@ -42,9 +39,8 @@ long upperEnergyThreshold_long;    // for turning load on
 long DCoffset_V_long;              // <--- for LPF
 long DCoffset_V_min;               // <--- for LPF
 long DCoffset_V_max;               // <--- for LPF
-long IEU_per_Wh; // depends on powerCal, frequency & the 'sweetzone' size.
 
-const long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
+const long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_HOUR;
 
 // for interaction between the main processor and the ISRs 
 volatile boolean dataReady = false;
@@ -65,11 +61,9 @@ int lowestNoOfSampleSetsPerMainsCycle;
 
 // Calibration values
 //-------------------
-// Two calibration values are used: powerCal and phaseCal. 
 // With most hardware, the default values are likely to work fine without 
-// need for change.  A full explanation of each of these values now follows:
-//   
-// See original source code for more explanation.
+// need for change.  A full explanation of each of these values now
+// follows. See original source code for more explanation.
 //
 // When calculating "real power", which is what this code does, the individual 
 // conversion rates for voltage and current are not of importance.  It is 
@@ -81,20 +75,18 @@ int lowestNoOfSampleSetsPerMainsCycle;
 // powerCal is the RECIPR0CAL of the power conversion rate.  A good value 
 // to start with is therefore 1/20 = 0.05 (Watts per ADC-step squared)
 
-const float powerCal_grid = 0.0435;  // for CT1
+const float powerCal_grid = 1 / 20;
  
-long requiredExportPerMainsCycle_inIEU;
-
 void setup()
 {
   // used for diagnostics LED
   pinMode(13, OUTPUT);
+
   pinMode(outputForTrigger, OUTPUT);  
   digitalWrite (outputForTrigger, LOAD_OFF); // the external trigger is active low
-  
-  delay(delayBeforeSerialStarts * 1000); // allow time to open Serial monitor      
+
   Serial.begin(9600);
-  Serial.println();
+  delay(delayBeforeSerialStarts); // allow time to open Serial monitor      
   Serial.println("RetroFiT 1.0");
   Serial.println();
 
@@ -112,14 +104,11 @@ void setup()
   // bucket of a PV Router should match this value.  The sweet-zone value is therefore 
   // included in the calculation below.
   //
-  // For the flow of energy at the 'grid' connection point (CT1) 
+  // For the flow of energy at the grid connection point (CT)
   capacityOfEnergyBucket_long = 
      (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal_grid);
   energyInBucket_long = 0;
   
-  requiredExportPerMainsCycle_inIEU = (long)REQUIRED_EXPORT_IN_WATTS * (1/powerCal_grid); 
-
-
   // Define operating limits for the LP filter which identifies DC offset in the voltage 
   // sample stream.  By limiting the output range, the filter always should start up 
   // correctly.
@@ -129,20 +118,17 @@ void setup()
 
   Serial.print ("ADC mode:       ");
   Serial.print (ADC_TIMER_PERIOD);
-  Serial.println ( " uS fixed timer");
+  Serial.println(" uS fixed timer");
 
   // Set up the ADC to be triggered by a hardware timer of fixed duration  
   ADCSRA  = (1<<ADPS0)+(1<<ADPS1)+(1<<ADPS2);  // Set the ADC's clock to system clock / 128
   ADCSRA |= (1 << ADEN);                 // Enable ADC
 
   Timer1.initialize(ADC_TIMER_PERIOD);   // set Timer1 interval
-  Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
+  Timer1.attachInterrupt(timerIsr);      // declare timerIsr() as interrupt service routine
 
-  Serial.print ( "powerCal_grid =      "); Serial.println (powerCal_grid,4);
-  
-  Serial.print ("Export rate (Watts) = ");
-  Serial.println (REQUIRED_EXPORT_IN_WATTS);
-  
+  Serial.print ("powerCal_grid =      ");
+  Serial.println (powerCal_grid, 4);
   Serial.print ("zero-crossing persistence (sample sets) = ");
   Serial.println (PERSISTENCE_FOR_POLARITY_CHANGE);
   Serial.print ("continuity sampling display rate (mains cycles) = ");
@@ -168,7 +154,7 @@ void timerIsr(void)
   static enum adc_source { A0_VOLTAGE, A1_CURRENT } sample_source = A0_VOLTAGE;
   static int sampleI_grid_raw;
   
-  switch(sample_source)
+  switch (sample_source)
     {
       // voltage sensor is on A0
     case A0_VOLTAGE:
@@ -177,7 +163,7 @@ void timerIsr(void)
       ADCSRA |= (1<<ADSC);              // start the ADC
       sample_source = A1_CURRENT;
       sampleI_grid = sampleI_grid_raw;
-      dataReady = true;                 // all three ADC values can now be processed
+      dataReady = true;                 // both ADC values can now be processed
       break;
       // current sensor is on A1
     case A1_CURRENT:
@@ -191,39 +177,17 @@ void timerIsr(void)
     }
 }
 
-
-// When using interrupt-based logic, the main processor spins in
-// loop() until the dataReady flag has been set by the ADC.  Once this
-// flag has been set, the main processor clears the flag and proceeds
-// with all the processing for one pair of V & I samples.  It then
-// returns to loop() to wait for the next set to become available.
-
-// If the next set of samples become available before the processing
-// of the previous set has been completed, data could be lost.  This
-// situation can be avoided by prior use of the WORKLOAD_CHECK mode.
-// Using this facility, the amount of spare processing capacity per
-// loop can be determined.  If there is insufficient processing
-// capacity to do all that is required, the base workload can be
-// reduced by increasing the duration of ADC_TIMER_PERIOD.
-
 void loop()             
 { 
   if (dataReady)
     {
-      // clear the flag
       dataReady = false; 
-      // executed once for each set of V&I samples
       allGeneralProcessing();
     }
 }
 
 
-/* This routine is called to process each pair of V & I samples. The
-   main processor and the ADC work autonomously, their operation being
-   only linked via the dataReady flag.  As soon as a new set of data
-   is made available by the ADC, the main processor can start to work
-   on it immediately.  */
-
+/* Process each fresh pair of V & I samples.  */
 void allGeneralProcessing()
 {
   static long sumP_grid;                              // for per-cycle summation of 'real power' 
@@ -260,8 +224,6 @@ void allGeneralProcessing()
         //
         long realPower_grid = sumP_grid / sampleSetsDuringThisMainsCycle; // proportional to Watts
    
-        realPower_grid -= requiredExportPerMainsCycle_inIEU; // <- useful for PV simulation
- 
         // Next, the energy content of this power rating needs to be determined.  Energy is 
         // power multiplied by time, so the next step is normally to multiply the measured
         // value of power by the time over which it was measured.
@@ -288,7 +250,6 @@ void allGeneralProcessing()
          
         // Apply max and min limits to bucket's level.  This is to ensure correct operation
         // when conditions change, i.e. when import changes to export, and vici versa.
-
         if (energyInBucket_long > capacityOfEnergyBucket_long)
           energyInBucket_long = capacityOfEnergyBucket_long;
         else if (energyInBucket_long < 0)
@@ -360,18 +321,14 @@ void allGeneralProcessing()
       // To ensure that the LPF will always start up correctly when 240V AC is available, its
       // output value needs to be prevented from drifting beyond the likely range of the 
       // voltage signal.  This avoids the need to use a HPF as was done for initial Mk2 builds.
-      //
-      if (DCoffset_V_long < DCoffset_V_min)
-        DCoffset_V_long = DCoffset_V_min;
-      else if (DCoffset_V_long > DCoffset_V_max)
-        DCoffset_V_long = DCoffset_V_max;
+      DCoffset_V_long = min(DCoffset_V_long, DCoffset_V_min);
+      DCoffset_V_long = max(DCoffset_V_long, DCoffset_V_max);
            
     } // end of processing that is specific to the first Vsample in each -ve half cycle
   } // end of processing that is specific to samples where the voltage is negative
   
   // processing for EVERY set of samples
-  //
-  // First, deal with the power at the grid connection point (as measured via CT1)
+  // First, deal with the power at the grid connection point (as measured via the CT)
   // remove most of the DC offset from the current sample (the precise value does not matter)
   long sampleIminusDC_grid = ((long)(sampleI_grid-DCoffset_I))<<8;
    
@@ -414,6 +371,5 @@ void confirmPolarity()
     }
 }
 
-// settings for normal mode
 //  lowerEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5; 
 //  upperEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;   
