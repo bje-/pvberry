@@ -1,14 +1,10 @@
-/*
- * retrofit.ino -- RetroFiT sketch
- */
-
-#include <Arduino.h> 
+#include <Arduino.h>
 #include <TimerOne.h>
+#include "myassert.h"
 
 void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
-
 
 #define ADC_TIMER_PERIOD 125 // uS (determines the sampling rate / amount of idle time)
 
@@ -22,16 +18,12 @@ void confirmPolarity();
 #define WORKING_RANGE_IN_JOULES 3600 
 #define REQUIRED_EXPORT_IN_WATTS 0 // when set to a negative value, this acts as a PV generator 
 
-// to prevent the diverted energy total from 'creeping'
-#define ANTI_CREEP_LIMIT 5 // in Joules per mains cycle (has no effect when set to 0)
-long antiCreepLimit_inIEUperMainsCycle;
 
 enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
 
 const byte outputForTrigger = 4; // <-- an output which is active-low
 const byte voltageSensor = 0;          // A0 is for the voltage sensor
-const byte currentSensor_diverted = 4; // A4 is for CT2 which measures diverted current
 const byte currentSensor_grid = 1;     // A1 is for the CT which measures grid current
 
 const byte delayBeforeSerialStarts = 2;  // in seconds, to allow Serial window to be opened
@@ -40,7 +32,7 @@ const int DCoffset_I = 512;    // nominal mid-point value of ADC @ x1 scale
 
 // General global variables that are used in multiple blocks so cannot be static.
 // For integer maths, many variables need to be 'long'
-//
+
 boolean beyondStartUpPhase = false;     // start-up delay, allows things to settle
 long triggerThreshold_long;        // for determining when the trigger may be safely armed
 long energyInBucket_long;          // in Integer Energy Units
@@ -50,21 +42,13 @@ long upperEnergyThreshold_long;    // for turning load on
 long DCoffset_V_long;              // <--- for LPF
 long DCoffset_V_min;               // <--- for LPF
 long DCoffset_V_max;               // <--- for LPF
-long divertedEnergyRecent_IEU = 0; // Hi-res accumulator of limited range
-unsigned int divertedEnergyTotal_Wh = 0; // WattHour register of 63K range
 long IEU_per_Wh; // depends on powerCal, frequency & the 'sweetzone' size.
 
-unsigned long displayShutdown_inMainsCycles; 
-unsigned long absenceOfDivertedEnergyCount = 0;
-long mainsCyclesPerHour;
-
-// this setting is only used if anti-flicker mode is enabled
-float offsetOfEnergyThresholdsInAFmode = 0.1; // <-- must not exceeed 0.5
+const long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
 
 // for interaction between the main processor and the ISRs 
 volatile boolean dataReady = false;
 volatile int sampleI_grid;
-volatile int sampleI_diverted;
 volatile int sampleV;
 
 // For an enhanced polarity detection mechanism, which includes a persistence check
@@ -85,41 +69,7 @@ int lowestNoOfSampleSetsPerMainsCycle;
 // With most hardware, the default values are likely to work fine without 
 // need for change.  A full explanation of each of these values now follows:
 //   
-// powerCal is a floating point variable which is used for converting the 
-// product of voltage and current samples into Watts.
-//
-// The correct value of powerCal is dependent on the hardware that is 
-// in use.  For best resolution, the hardware should be configured so that the 
-// voltage and current waveforms each span most of the ADC's usable range.  For 
-// many systems, the maximum power that will need to be measured is around 3kW. 
-//
-// My sketch "MinAndMaxValues.ino" provides a good starting point for 
-// system setup.  First arrange for the CT to be clipped around either core of a  
-// cable which supplies a suitable load; then run the tool.  The resulting values 
-// should sit nicely within the range 0-1023.  To allow some room for safety, 
-// a margin of around 100 levels should be left at either end.  This gives a 
-// output range of around 800 ADC levels, which is 80% of its usable range.
-//
-// My sketch "RawSamplesTool.ino" provides a one-shot visual display of the
-// voltage and current waveforms.  This provides an easy way for the user to be 
-// confident that their system has been set up correctly for the power levels 
-// that are to be measured.
-//
-// The ADC has an input range of 0-5V and an output range of 0-1023 levels.
-// The purpose of each input sensor is to convert the measured parameter into a 
-// low-voltage signal which fits nicely within the ADC's input range. 
-//
-// In the case of 240V mains voltage, the numerical value of the input signal 
-// in Volts is likely to be fairly similar to the output signal in ADC levels.  
-// 240V AC has a peak-to-peak amplitude of 679V, which is not far from the ideal 
-// output range.  Stated more formally, the conversion rate of the overall system 
-// for measuring VOLTAGE is likely to be around 1 ADC-step per Volt (RMS).
-//
-// In the case of AC current, however, the situation is very different.  At
-// mains voltage, a power of 3kW corresponds to an RMS current of 12.5A which 
-// has a peak-to-peak range of 35A.  This is smaller than the output signal by 
-// around a factor of twenty.  The conversion rate of the overall system for 
-// measuring CURRENT is therefore likely to be around 20 ADC-steps per Amp.
+// See original source code for more explanation.
 //
 // When calculating "real power", which is what this code does, the individual 
 // conversion rates for voltage and current are not of importance.  It is 
@@ -130,118 +80,24 @@ int lowestNoOfSampleSetsPerMainsCycle;
 // 
 // powerCal is the RECIPR0CAL of the power conversion rate.  A good value 
 // to start with is therefore 1/20 = 0.05 (Watts per ADC-step squared)
-//
+
 const float powerCal_grid = 0.0435;  // for CT1
-const float powerCal_diverted = 0.0435;  // for CT2
  
-                        
-// phaseCal is used to alter the phase of the voltage waveform relative to the
-// current waveform.  The algorithm interpolates between the most recent pair
-// of voltage samples according to the value of phaseCal. 
-//
-//    With phaseCal = 1, the most recent sample is used.  
-//    With phaseCal = 0, the previous sample is used
-//    With phaseCal = 0.5, the mid-point (average) value in used
-//
-// Values ouside the 0 to 1 range involve extrapolation, rather than interpolation
-// and are not recommended.  By altering the order in which V and I samples are 
-// taken, and for how many loops they are stored, it should always be possible to
-// arrange for the optimal value of phaseCal to lie within the range 0 to 1.  When 
-// measuring a resistive load, the voltage and current waveforms should be perfectly 
-// aligned.  In this situation, the Power Factor will be 1.
-//
-// My sketch "PhasecalChecker.ino" provides an easy way to determine the correct 
-// value of phaseCal for any hardware configuration.  An index of my various Mk2-related
-// exhibits is available at http://openenergymonitor.org/emon/node/1757
-//
-//const float  phaseCal_grid = 1.0;  <--- not used in this version
-//const float  phaseCal_diverted = 1.0;  <--- not used in this version
-
-// Various settings for the 4-digit display, which needs to be refreshed every few mS
-const byte noOfDigitLocations = 4;
-const byte noOfPossibleCharacters = 22;
-#define MAX_DISPLAY_TIME_COUNT 10// no of processing loops between display updates
-#define UPDATE_PERIOD_FOR_DISPLAYED_DATA 50 // mains cycles
-#define DISPLAY_SHUTDOWN_IN_HOURS 8 // auto-reset after this period of inactivity
-
-#define DRIVER_CHIP_DISABLED HIGH
-#define DRIVER_CHIP_ENABLED LOW
-
-// the primary segments are controlled by a pair of logic chips
-const byte noOfDigitSelectionLines = 4; // <- for the 74HC4543 7-segment display driver
-const byte noOfDigitLocationLines = 2; // <- for the 74HC138 2->4 line demultiplexer
-
-byte enableDisableLine = 5; // <- affects the primary 7 segments only (not the DP)
-byte decimalPointLine = 14; // <- this line has to be individually controlled. 
-
-byte digitLocationLine[noOfDigitLocationLines] = {16,15};
-byte digitSelectionLine[noOfDigitSelectionLines] = {7,9,8,6};
-
-// The final column of digitValueMap[] is for the decimal point status.  In this version, 
-// the decimal point has to be treated differently than the other seven segments, so 
-// a convenient means of accessing this column is provided.
-
-byte digitValueMap[noOfPossibleCharacters][noOfDigitSelectionLines +1] = {
-  LOW , LOW , LOW , LOW , LOW , // '0' <- element 0
-  LOW , LOW , LOW , HIGH, LOW , // '1' <- element 1
-  LOW , LOW , HIGH, LOW , LOW , // '2' <- element 2
-  LOW , LOW , HIGH, HIGH, LOW , // '3' <- element 3
-  LOW , HIGH, LOW , LOW , LOW , // '4' <- element 4
-  LOW , HIGH, LOW , HIGH, LOW , // '5' <- element 5
-  LOW , HIGH, HIGH, LOW , LOW , // '6' <- element 6
-  LOW , HIGH, HIGH, HIGH, LOW , // '7' <- element 7
-  HIGH, LOW , LOW , LOW , LOW , // '8' <- element 8
-  HIGH, LOW , LOW , HIGH, LOW , // '9' <- element 9
-  LOW , LOW , LOW , LOW , HIGH, // '0.' <- element 10
-  LOW , LOW , LOW , HIGH, HIGH, // '1.' <- element 11
-  LOW , LOW , HIGH, LOW , HIGH, // '2.' <- element 12
-  LOW , LOW , HIGH, HIGH, HIGH, // '3.' <- element 13
-  LOW , HIGH, LOW , LOW , HIGH, // '4.' <- element 14
-  LOW , HIGH, LOW , HIGH, HIGH, // '5.' <- element 15
-  LOW , HIGH, HIGH, LOW , HIGH, // '6.' <- element 16
-  LOW , HIGH, HIGH, HIGH, HIGH, // '7.' <- element 17
-  HIGH, LOW , LOW , LOW , HIGH, // '8.' <- element 18
-  HIGH, LOW , LOW , HIGH, HIGH, // '9.' <- element 19
-  HIGH, HIGH, HIGH, HIGH, LOW , // ' '  <- element 20          
-  HIGH, HIGH, HIGH, HIGH, HIGH  // '.'  <- element 21
-};
-
-// a tidy means of identifying the DP status data when accessing the above table
-const byte DPstatus_columnID = noOfDigitSelectionLines; 
-
-byte digitLocationMap[noOfDigitLocations][noOfDigitLocationLines] = {
-  LOW , LOW ,    // Digit 1
-  LOW , HIGH,    // Digit 2
-  HIGH, LOW ,    // Digit 3
-  HIGH, HIGH,    // Digit 4
-};
-
-#define ON HIGH
-#define OFF LOW
-
-const byte noOfSegmentsPerDigit = 8; // includes one for the decimal point
-enum digitEnableStates {DIGIT_ENABLED, DIGIT_DISABLED};
-
-byte digitSelectorPin[noOfDigitLocations] = {16,10,13,11};
-byte segmentDrivePin[noOfSegmentsPerDigit] = {2,5,12,6,7,9,8,14};
-byte charsForDisplay[noOfDigitLocations] = {20,20,20,20}; // all blank 
-
-boolean EDD_isActive = false; // energy divertion detection
 long requiredExportPerMainsCycle_inIEU;
 
-
 void setup()
-{  
+{
+  // used for diagnostics LED
+  pinMode(13, OUTPUT);
   pinMode(outputForTrigger, OUTPUT);  
   digitalWrite (outputForTrigger, LOAD_OFF); // the external trigger is active low
   
   delay(delayBeforeSerialStarts * 1000); // allow time to open Serial monitor      
- 
   Serial.begin(9600);
   Serial.println();
   Serial.println("RetroFiT 1.0");
   Serial.println();
-       
+
   // When using integer maths, calibration values that have supplied in floating point 
   // form need to be rescaled.  
   
@@ -261,24 +117,6 @@ void setup()
      (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal_grid);
   energyInBucket_long = 0;
   
-  // For recording the accumulated amount of diverted energy data (using CT2), a similar 
-  // calibration mechanism is required.  Rather than a bucket with a fixed capacity, the 
-  // accumulator for diverted energy just needs to be scaled correctly.  As soon as its 
-  // value exceeds 1 Wh, an associated WattHour register is incremented, and the 
-  // accumulator's value is decremented accordingly. The calculation below is to determine
-  // the scaling for this accumulator.
-  
-  IEU_per_Wh = 
-     (long)JOULES_PER_WATT_HOUR * CYCLES_PER_SECOND * (1/powerCal_diverted); 
- 
-  // to avoid the diverted energy accumulator 'creeping' when the load is not active
-  antiCreepLimit_inIEUperMainsCycle = (float)ANTI_CREEP_LIMIT * (1/powerCal_grid);
-
-  mainsCyclesPerHour = (long)CYCLES_PER_SECOND * 
-                             SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
-                             
-  displayShutdown_inMainsCycles = DISPLAY_SHUTDOWN_IN_HOURS * mainsCyclesPerHour;                           
-      
   requiredExportPerMainsCycle_inIEU = (long)REQUIRED_EXPORT_IN_WATTS * (1/powerCal_grid); 
 
 
@@ -301,10 +139,7 @@ void setup()
   Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
 
   Serial.print ( "powerCal_grid =      "); Serial.println (powerCal_grid,4);
-  Serial.print ( "powerCal_diverted = "); Serial.println (powerCal_diverted,4);
   
-  Serial.print ("Anti-creep limit (Joules / mains cycle) = ");
-  Serial.println (ANTI_CREEP_LIMIT);
   Serial.print ("Export rate (Watts) = ");
   Serial.println (REQUIRED_EXPORT_IN_WATTS);
   
@@ -312,18 +147,16 @@ void setup()
   Serial.println (PERSISTENCE_FOR_POLARITY_CHANGE);
   Serial.print ("continuity sampling display rate (mains cycles) = ");
   Serial.println (CONTINUITY_CHECK_MAXCOUNT);  
-  Serial.println ("----");    
 }
 
 // An Interrupt Service Routine is now defined in which the ADC is
-// instructed to measure each analogue input in sequence.  A "data
-// ready"flag is set after each voltage conversion has been completed.
+// instructed to measure each analogue input in sequence.  A dataReady
+// flag is set after each voltage conversion has been completed.
 
-// For each set of samples, the two samples for current are taken
-// before the one for voltage.  This is appropriate because each
-// waveform current is generally slightly advanced relative to the
-// waveform for voltage.  The data ready flag is cleared within
-// loop().
+// For each pair of samples, the current sample is taken before the
+// one for voltage.  This is appropriate because each waveform current
+// is generally slightly advanced relative to the waveform for
+// voltage.  The dataReady flag is cleared within loop().
 
 // This Interrupt Service Routine is for use when the ADC is fixed
 // timer mode.  It is executed whenever the ADC timer expires.  In
@@ -331,45 +164,39 @@ void setup()
 // ISR.
 
 void timerIsr(void)
-{                                         
-  static unsigned char sample_index = 0;
-  static int  sampleI_grid_raw;
-  static int sampleI_diverted_raw;
-
-  switch(sample_index)
-  {
-    case 0:
+{
+  static enum adc_source { A0_VOLTAGE, A1_CURRENT } sample_source = A0_VOLTAGE;
+  static int sampleI_grid_raw;
+  
+  switch(sample_source)
+    {
+      // voltage sensor is on A0
+    case A0_VOLTAGE:
       sampleV = ADC;                    // store the ADC value (this one is for Voltage)
-      ADMUX = 0x40 + currentSensor_diverted;  // set up the next conversion, which is for Diverted Current
+      ADMUX = 0x40 + currentSensor_grid;  // set up the next conversion, which is for grid Current
       ADCSRA |= (1<<ADSC);              // start the ADC
-      sample_index++;                   // increment the control flag
-      sampleI_diverted = sampleI_diverted_raw;
+      sample_source = A1_CURRENT;
       sampleI_grid = sampleI_grid_raw;
       dataReady = true;                 // all three ADC values can now be processed
       break;
-    case 1:
-      sampleI_diverted_raw = ADC;               // store the ADC value (this one is for Diverted Current)
-      ADMUX = 0x40 + currentSensor_grid;  // set up the next conversion, which is for Grid Current
-      ADCSRA |= (1<<ADSC);              // start the ADC
-      sample_index++;                   // increment the control flag
-      break;
-    case 2:
+      // current sensor is on A1
+    case A1_CURRENT:
       sampleI_grid_raw = ADC;               // store the ADC value (this one is for Grid Current)
       ADMUX = 0x40 + voltageSensor;  // set up the next conversion, which is for Voltage
       ADCSRA |= (1<<ADSC);              // start the ADC
-      sample_index = 0;                 // reset the control flag
+      sample_source = A0_VOLTAGE;
       break;
     default:
-      sample_index = 0;                 // to prevent lockup (should never get here)      
-  }
+      unreachable();
+    }
 }
 
 
-// When using interrupt-based logic, the main processor waits in loop() until the 
-// dataReady flag has been set by the ADC.  Once this flag has been set, the main
-// processor clears the flag and proceeds with all the processing for one set of 
-// V & I samples.  It then returns to loop() to wait for the next set to become 
-// available.
+// When using interrupt-based logic, the main processor spins in
+// loop() until the dataReady flag has been set by the ADC.  Once this
+// flag has been set, the main processor clears the flag and proceeds
+// with all the processing for one pair of V & I samples.  It then
+// returns to loop() to wait for the next set to become available.
 
 // If the next set of samples become available before the processing
 // of the previous set has been completed, data could be lost.  This
@@ -381,28 +208,27 @@ void timerIsr(void)
 
 void loop()             
 { 
-  // flag is set after every set of ADC conversions
   if (dataReady)
     {
-      dataReady = false; // reset the flag
-      allGeneralProcessing(); // executed once for each set of V&I samples
+      // clear the flag
+      dataReady = false; 
+      // executed once for each set of V&I samples
+      allGeneralProcessing();
     }
 }
 
 
-// This routine is called to process each set of V & I samples. The
-// main processor and the ADC work autonomously, their operation being
-// only linked via the dataReady flag.  As soon as a new set of data
-// is made available by the ADC, the main processor can start to work
-// on it immediately.
+/* This routine is called to process each pair of V & I samples. The
+   main processor and the ADC work autonomously, their operation being
+   only linked via the dataReady flag.  As soon as a new set of data
+   is made available by the ADC, the main processor can start to work
+   on it immediately.  */
 
 void allGeneralProcessing()
 {
   static long sumP_grid;                              // for per-cycle summation of 'real power' 
-  static long sumP_diverted;                              // for per-cycle summation of 'real power' 
   static long cumVdeltasThisCycle_long;    // for the LPF which determines DC offset (voltage)
   static long lastSampleVminusDC_long;     //    for the phaseCal algorithm
-  static byte timerForDisplayUpdate = 0;
   static enum loadStates nextStateOfLoad = LOAD_OFF;  
 
   // remove DC offset from the raw voltage sample by subtracting the accurate value 
@@ -410,10 +236,7 @@ void allGeneralProcessing()
   long sampleVminusDC_long = ((long)sampleV<<8) - DCoffset_V_long; 
 
   // determine the polarity of the latest voltage sample
-  if(sampleVminusDC_long > 0)
-    polarityOfMostRecentVsample = POSITIVE;
-  else
-    polarityOfMostRecentVsample = NEGATIVE;
+  polarityOfMostRecentVsample = (sampleVminusDC_long > 0) ? POSITIVE : NEGATIVE;
   confirmPolarity();
   
   if (polarityConfirmed == POSITIVE) 
@@ -423,10 +246,6 @@ void allGeneralProcessing()
       // This is the start of a new +ve half cycle (just after the zero-crossing point)
       if (beyondStartUpPhase)
       {     
-        // a simple routine for checking the performance of this new ISR structure     
-        if (sampleSetsDuringThisMainsCycle < lowestNoOfSampleSetsPerMainsCycle) {
-          lowestNoOfSampleSetsPerMainsCycle = sampleSetsDuringThisMainsCycle; }
-             
         // Calculate the real power and energy during the last whole mains cycle.
         //
         // sumP contains the sum of many individual calculations of instantaneous power.  In  
@@ -440,7 +259,6 @@ void allGeneralProcessing()
         // a 'long') is therefore (1/powerCal) times larger than the actual power in Watts.
         //
         long realPower_grid = sumP_grid / sampleSetsDuringThisMainsCycle; // proportional to Watts
-        long realPower_diverted = sumP_diverted / sampleSetsDuringThisMainsCycle; // proportional to Watts
    
         realPower_grid -= requiredExportPerMainsCycle_inIEU; // <- useful for PV simulation
  
@@ -458,7 +276,6 @@ void allGeneralProcessing()
         // the actual energy in Joules.
 
         long realEnergy_grid = realPower_grid; 
-        long realEnergy_diverted = realPower_diverted; 
    
         // Energy contributions from the grid connection point (CT1) are summed in an 
         // accumulator which is known as the energy bucket.  The purpose of the energy bucket 
@@ -477,44 +294,6 @@ void allGeneralProcessing()
         else if (energyInBucket_long < 0)
 	    energyInBucket_long = 0;  
   
-        if (EDD_isActive) // Energy Diversion Display
-        {
-          // For diverted energy, the latest contribution needs to be added to an 
-          // accumulator which operates with maximum precision.
-          
-          if (realEnergy_diverted < antiCreepLimit_inIEUperMainsCycle)
-            realEnergy_diverted = 0;
-
-          divertedEnergyRecent_IEU += realEnergy_diverted;
-      
-          // Whole kWhours are then recorded separately
-          if (divertedEnergyRecent_IEU > IEU_per_Wh)
-          {
-            divertedEnergyRecent_IEU -= IEU_per_Wh;
-            divertedEnergyTotal_Wh++;
-          }  
-        }
-        
-        if (timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA) 
-        {
-	  // the 4-digit display needs to be refreshed every few mS. For convenience,
-          // this action is performed every N times around this processing loop.
-          timerForDisplayUpdate = 0;
-          
-          // After a pre-defined period of inactivity, the 4-digit display needs to 
-          // close down in readiness for the next's day's data. 
-          //
-          if (absenceOfDivertedEnergyCount > displayShutdown_inMainsCycles)
-          {
-            // clear the accumulators for diverted energy
-            divertedEnergyTotal_Wh = 0;
-            divertedEnergyRecent_IEU = 0;
-            EDD_isActive = false; // energy diversion detector is now inactive
-          }
-        }
-        else
-          timerForDisplayUpdate++;
-
         // continuity checker
         sampleCount_forContinuityChecker++;
         if (sampleCount_forContinuityChecker >= CONTINUITY_CHECK_MAXCOUNT)
@@ -527,7 +306,6 @@ void allGeneralProcessing()
         // clear the per-cycle accumulators for use in this new mains cycle.  
         sampleSetsDuringThisMainsCycle = 0;
         sumP_grid = 0;
-        sumP_diverted = 0;
       }
       else
       {  
@@ -536,7 +314,6 @@ void allGeneralProcessing()
         {
           beyondStartUpPhase = true;
           sumP_grid = 0;
-          sumP_diverted = 0;
           sampleSetsDuringThisMainsCycle = 0; // not yet dealt with for this cycle
           sampleCount_forContinuityChecker = 1; // opportunity has been missed for this cycle
           lowestNoOfSampleSetsPerMainsCycle = 999;
@@ -563,21 +340,12 @@ void allGeneralProcessing()
                   
         // set the Arduino's output pin accordingly, and clear the flag
         digitalWrite(outputForTrigger, nextStateOfLoad);   
-      
-        // update the Energy Diversion Detector
-        if (nextStateOfLoad == LOAD_ON)
-	  {
-	    absenceOfDivertedEnergyCount = 0; 
-	    EDD_isActive = true;
-	  }
-        else
-          absenceOfDivertedEnergyCount++;
       }
     }    
   } // end of processing that is specific to samples where the voltage is positive
-  
-  else // the polatity of this sample is negative
-  {     
+  else
+  {
+    // the polatity of this sample is negative  
     if (polarityConfirmedOfLastSampleV != NEGATIVE)
     {
       // This is the start of a new -ve half cycle (just after the zero-crossing point)      
@@ -593,11 +361,10 @@ void allGeneralProcessing()
       // output value needs to be prevented from drifting beyond the likely range of the 
       // voltage signal.  This avoids the need to use a HPF as was done for initial Mk2 builds.
       //
-      if (DCoffset_V_long < DCoffset_V_min) {
-        DCoffset_V_long = DCoffset_V_min; }
-      else  
-      if (DCoffset_V_long > DCoffset_V_max) {
-        DCoffset_V_long = DCoffset_V_max; }
+      if (DCoffset_V_long < DCoffset_V_min)
+        DCoffset_V_long = DCoffset_V_min;
+      else if (DCoffset_V_long > DCoffset_V_max)
+        DCoffset_V_long = DCoffset_V_max;
            
     } // end of processing that is specific to the first Vsample in each -ve half cycle
   } // end of processing that is specific to samples where the voltage is negative
@@ -619,21 +386,6 @@ void allGeneralProcessing()
   instP = instP>>12;     // scaling is now x1, as for Mk2 (V_ADC x I_ADC)       
   sumP_grid +=instP; // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
   
-  // Now deal with the diverted power (as measured via CT2)
-  // remove most of the DC offset from the current sample (the precise value does not matter)
-  long sampleIminusDC_diverted = ((long)(sampleI_diverted-DCoffset_I))<<8;
-
-  // phase-shift the voltage waveform so that it aligns with the diverted current waveform
-  long phaseShiftedSampleVminusDC_diverted = sampleVminusDC_long; // <- simple version for when
-                                                                  // phaseCal is not in use
-                                                               
-  // calculate the "real power" in this sample pair and add to the accumulated sum
-  filtV_div4 = phaseShiftedSampleVminusDC_diverted>>2;  // reduce to 16-bits (now x64, or 2^6)
-  filtI_div4 = sampleIminusDC_diverted>>2; // reduce to 16-bits (now x64, or 2^6)
-  instP = filtV_div4 * filtI_div4;  // 32-bits (now x4096, or 2^12)
-  instP = instP>>12;     // scaling is now x1, as for Mk2 (V_ADC x I_ADC)       
-  sumP_diverted +=instP; // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
-  
   sampleSetsDuringThisMainsCycle++;
   
   // store items for use during next loop
@@ -643,9 +395,9 @@ void allGeneralProcessing()
 }
 
 
-/* This routine prevents a zero-crossing point from being declared until 
- * a certain number of consecutive samples in the 'other' half of the 
- * waveform have been encountered.  */
+/* This routine prevents a zero-crossing point from being declared
+   until a certain number of consecutive samples in the 'other' half
+   of the waveform are observed.  */
 
 void confirmPolarity()
 {
