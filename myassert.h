@@ -17,3 +17,10 @@ void __assert(const char *__func, const char *__file, int __lineno, const char *
       delay(250);
     }
 }
+
+void unreachable()
+{
+  int unreachable = 0;
+  assert (unreachable);
+  __builtin_unreachable();
+}
