@@ -82,9 +82,6 @@ int freeRam();
 
 // ----------------  Extra Features selection ----------------------
 //
-// - WORKLOAD_CHECK, for determining how much spare processing time there is.
-// #define WORKLOAD_CHECK  // <-- Include this line is this feature is required
-
 // The power-diversion logic can operate in either of two modes:
 //
 // - NORMAL, where the load switches rapidly on/off to maintain a constant energy level.
@@ -387,11 +384,7 @@ void setup()
   }
     
   Serial.print ( "Extra Features: ");  
-#ifdef WORKLOAD_CHECK  
-  Serial.println ( "WORKLOAD_CHECK ");
-#else
-    Serial.println ("none"); 
-#endif
+  Serial.println ("none"); 
   Serial.println ();
         
   Serial.print ( "powerCal_grid =      "); Serial.println (powerCal_grid,4);
@@ -410,24 +403,6 @@ void setup()
   configureParamsForSelectedOutputMode(); 
 
   Serial.println ("----");    
-
-#ifdef WORKLOAD_CHECK
-   Serial.println ("WELCOME TO WORKLOAD_CHECK ");
-
-//   <<- start of commented out section, to save on RAM space!
-/*
-   Serial.println ("  This mode of operation allows the spare processing capacity of the system");
-   Serial.println ("to be analysed.  Additional delay is gradually increased until all spare time");
-   Serial.println ("has been used up.  This value (in uS) is noted and the process is repeated.  ");
-   Serial.println ("The delay setting is increased by 1uS at a time, and each value of delay is ");
-   Serial.println ("checked several times before the delay is increased. ");
- */
-//  <<- end of commented out section, to save on RAM space!
-
-   Serial.println ("  The displayed value is the amount of spare time, per set of V & I samples, ");
-   Serial.println ("that is available for doing additional processing.");
-   Serial.println ();
- #endif
 }
 
 // An Interrupt Service Routine is now defined in which the ADC is instructed to 
@@ -491,59 +466,12 @@ void timerIsr(void)
 //
 void loop()
 {
-#ifdef WORKLOAD_CHECK
-  static int del = 0; // delay, as passed to delayMicroseconds()
-  static int res = 0; // result, to be displayed at the next opportunity
-  static byte count = 0; // to allow multiple runs per setting
-  static byte displayFlag = 0; // to determine when printing may occur
-#endif
-
   if (dataReady)   // flag is set after every set of ADC conversions
   {
     dataReady = false; // reset the flag
     allGeneralProcessing(); // executed once for each set of V&I samples
-    
-#ifdef WORKLOAD_CHECK 
-    delayMicroseconds(del); // <--- to assess how much spare time there is
-    if (dataReady)       // if data is ready again, delay was too long
-    { 
-      res = del;             // note the exact value
-      del = 1;               // and start again with 1us delay   
-      count = 0;
-      displayFlag = 0;   
-    }
-    else
-    {
-      count++;          // to give several runs with the same value
-      if (count > 50)
-      {
-        count = 0;
-        del++;          //  increase delay by 1uS
-      } 
-    }
-#endif  
-
-  }  // <-- this closing brace needs to be outside the WORKLOAD_CHECK blocks! 
-  
-#ifdef WORKLOAD_CHECK 
-  switch (displayFlag) 
-  {
-    case 0: // the result is available now, but don't display until the next loop
-      displayFlag++;
-      break;
-    case 1: // with minimum delay, it's OK to print now
-      Serial.print(res);
-      displayFlag++;
-      break;
-    case 2: // with minimum delay, it's OK to print now
-      Serial.println("uS");
-      displayFlag++;
-      break;
-    default:; // for most of the time, displayFlag is 3           
   }
-#endif
-  
-} // end of loop()
+}
 
 
 // This routine is called to process each set of V & I samples. The main processor and 
