@@ -115,8 +115,6 @@ long energyInBucket_long;          // in Integer Energy Units
 long capacityOfEnergyBucket_long;  // depends on powerCal, frequency & the 'sweetzone' size.
 long lowerEnergyThreshold_long;    // for turning load off
 long upperEnergyThreshold_long;    // for turning load on
-// int phaseCal_grid_int;             // to avoid the need for floating-point maths
-// int phaseCal_diverted_int;         // to avoid the need for floating-point maths
 long DCoffset_V_long;              // <--- for LPF
 long DCoffset_V_min;               // <--- for LPF
 long DCoffset_V_max;               // <--- for LPF
@@ -224,8 +222,6 @@ const float powerCal_diverted = 0.0435;  // for CT2
 // value of phaseCal for any hardware configuration.  An index of my various Mk2-related
 // exhibits is available at http://openenergymonitor.org/emon/node/1757
 //
-//const float  phaseCal_grid = 1.0;  <--- not used in this version
-//const float  phaseCal_diverted = 1.0;  <--- not used in this version
 
 // Various settings for the 4-digit display, which needs to be refreshed every few mS
 const byte noOfDigitLocations = 4;
@@ -310,13 +306,8 @@ void setup()
   for (int i = 0; i < noOfSegmentsPerDigit; i++) {
     digitalWrite(segmentDrivePin[i], OFF); }
       
-  
-       
   // When using integer maths, calibration values that have supplied in floating point 
   // form need to be rescaled.
-  //
-//  phaseCal_grid_int = phaseCal_grid * 256; // for integer maths
-//  phaseCal_diverted_int = phaseCal_diverted * 256; // for integer maths
 
   // When using integer maths, the SIZE of the ENERGY BUCKET is altered to match the
   // scaling of the energy detection mechanism that is in use.  This avoids the need 
@@ -699,8 +690,6 @@ void allGeneralProcessing()
   long sampleIminusDC_grid = ((long)(sampleI_grid-DCoffset_I))<<8;
 
   // phase-shift the voltage waveform so that it aligns with the grid current waveform
-//  long  phaseShiftedSampleVminusDC_grid = lastSampleVminusDC_long
-//         + (((sampleVminusDC_long - lastSampleVminusDC_long)*phaseCal_grid_int)>>8);  
   long  phaseShiftedSampleVminusDC_grid = sampleVminusDC_long; // <- simple version for when
 							       // phaseCal is not in use
 
@@ -717,8 +706,6 @@ void allGeneralProcessing()
   long sampleIminusDC_diverted = ((long)(sampleI_diverted-DCoffset_I))<<8;
 
   // phase-shift the voltage waveform so that it aligns with the diverted current waveform
-//  long phaseShiftedSampleVminusDC_diverted = lastSampleVminusDC_long
-//         + (((sampleVminusDC_long - lastSampleVminusDC_long)*phaseCal_diverted_int)>>8);  
   long phaseShiftedSampleVminusDC_diverted = sampleVminusDC_long; // <- simple version for when
 								  // phaseCal is not in use
 
