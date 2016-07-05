@@ -91,7 +91,6 @@ enum outputModes outputMode;
 
 // allocation of digital pins which are not dependent on the display type that is in use
 // *************************************************************************************
-const byte outputModeSelectorPin = 3; // <-- an input which uses the internal pullup 
 const byte outputForTrigger = 4; // <-- an output which is active-low
 
 // allocation of analogue pins which are not dependent on the display type that is in use
@@ -225,12 +224,9 @@ void setup()
 {
   pinMode(outputForTrigger, OUTPUT);  
   digitalWrite (outputForTrigger, LOAD_OFF); // the external trigger is active low
-  
-  pinMode(outputModeSelectorPin, INPUT);
-  digitalWrite(outputModeSelectorPin, HIGH); // enable the internal pullup resistor
-  delay (100); // allow time to settle
-  int pinState = digitalRead(outputModeSelectorPin);  // initial selection and
-  outputMode = (enum outputModes)pinState;            //   assignment of output mode
+
+  // use NORMAL for now
+  outputMode = NORMAL;
  
   delay(delayBeforeSerialStarts * 1000); // allow time to open Serial monitor      
  
@@ -523,7 +519,7 @@ void allGeneralProcessing()
           }  
         }
         
-        if(timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA) 
+        if (timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA)
         { // the 4-digit display needs to be refreshed every few mS. For convenience,
           // this action is performed every N times around this processing loop.
           timerForDisplayUpdate = 0;
@@ -562,7 +558,7 @@ void allGeneralProcessing()
       else
       {  
         // wait until the DC-blocking filters have had time to settle
-        if(millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000) 
+        if (millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000)
         {
           beyondStartUpPhase = true;
           sumP_grid = 0;
@@ -706,9 +702,9 @@ void configureParamsForSelectedOutputMode()
   {
     // settings for anti-flicker mode
     lowerEnergyThreshold_long =
-       capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
+      capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
     upperEnergyThreshold_long =
-       capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);   
+      capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
   }
   else
   {
