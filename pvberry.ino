@@ -753,8 +753,6 @@ void allGeneralProcessing()
       if (DCoffset_V_long > DCoffset_V_max) {
         DCoffset_V_long = DCoffset_V_max; }
         
-      checkOutputModeSelection(); // updates outputMode if switch is changed
-           
     } // end of processing that is specific to the first Vsample in each -ve half cycle
   } // end of processing that is specific to samples where the voltage is negative
   
@@ -822,31 +820,6 @@ void confirmPolarity()
   {
     count = 0;
     polarityConfirmed = polarityOfMostRecentVsample;
-  }
-}
-
-
-
-// this function changes the value of outputMode if the state of the external switch is altered 
-void checkOutputModeSelection()  
-{
-  static byte count = 0;
-  int pinState = digitalRead(outputModeSelectorPin);
-  if (pinState != outputMode)
-  {
-    count++;
-  }  
-  if (count >= 20)
-  {
-    count = 0;
-    outputMode = (enum outputModes)pinState;  // change the global variable
-    Serial.print ("outputMode selection changed to ");
-    if (outputMode == NORMAL) {
-      Serial.println ( "normal"); }
-    else {  
-      Serial.println ( "anti-flicker"); }
-    
-    configureParamsForSelectedOutputMode();
   }
 }
 
@@ -931,17 +904,6 @@ void configureValueForDisplay()
      
     charsForDisplay[locationOfDot] = 21; // dot
   }
-/*  
-  Serial.print(charsForDisplay[0]);
-  Serial.print("  "); 
-  Serial.print(charsForDisplay[1]);
-  Serial.print("  "); 
-  Serial.print(charsForDisplay[2]);
-  Serial.print("  "); 
-  Serial.print(charsForDisplay[3]);
-  Serial.println(); 
-*/  
-//  valueToBeDisplayed++;
 }
 
 void refreshDisplay()
