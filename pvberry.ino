@@ -76,7 +76,6 @@ void configureParamsForSelectedOutputMode();
 void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
-int freeRam();
 
 // ----------------  Extra Features selection ----------------------
 //
@@ -724,14 +723,4 @@ void configureParamsForSelectedOutputMode()
   Serial.println(lowerEnergyThreshold_long);
   Serial.print("  upperEnergyThreshold_long   = ");
   Serial.println(upperEnergyThreshold_long);
-  
-  Serial.print(">>free RAM = ");
-  Serial.println(freeRam());  // a useful value to keep an eye on
-}
-
-
-int freeRam () {
-  extern int __heap_start, *__brkval; 
-  int v; 
-  return (int) &v - (__brkval == 0 ? (int) &__heap_start : (int) __brkval); 
 }
