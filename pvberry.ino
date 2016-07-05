@@ -233,7 +233,7 @@ void setup()
   Serial.begin(9600);
   Serial.println();
   Serial.println("-------------------------------------");
-  Serial.println("Sketch ID:      Mk2_bothDisplays_4.ino");
+  Serial.println("Sketch ID:      pvberry.ino");
   Serial.println();
        
   for (int i = 0; i < noOfSegmentsPerDigit; i++) {
