@@ -337,17 +337,22 @@ void setup()
   Serial.println ("----");    
 }
 
-// An Interrupt Service Routine is now defined in which the ADC is instructed to 
-// measure each analogue input in sequence.  A "data ready"flag is set after each 
-// voltage conversion has been completed.
-//   For each set of samples, the two samples for current  are taken before the one 
-// for voltage.  This is appropriate because each waveform current is generally slightly 
-// advanced relative to the waveform for voltage.  The data ready flag is cleared 
-// within loop().
-//   This Interrupt Service Routine is for use when the ADC is fixed timer mode.  It is 
-// executed whenever the ADC timer expires.  In this mode, the next ADC conversion is 
-// initiated from within this ISR.
-//
+// An Interrupt Service Routine is now defined in which the ADC is
+// instructed to measure each analogue input in sequence.  A "data
+// ready" flag is set after each voltage conversion has been
+// completed.
+
+// For each set of samples, the two samples for current are taken
+// before the one for voltage.  This is appropriate because each
+// waveform current is generally slightly advanced relative to the
+// waveform for voltage.  The data ready flag is cleared within
+// loop().
+
+// This Interrupt Service Routine is for use when the ADC is fixed
+// timer mode.  It is executed whenever the ADC timer expires.  In
+// this mode, the next ADC conversion is initiated from within this
+// ISR.
+
 void timerIsr(void)
 {                                         
   static unsigned char sample_index = 0;
@@ -676,12 +681,11 @@ void allGeneralProcessing()
 //  ----- end of main Mk2i code -----
 
 
+/* This routine prevents a zero-crossing point from being declared
+   until a certain number of consecutive samples in the 'other' half
+   of the waveform have been encountered.  */
 void confirmPolarity()
 {
-  /* This routine prevents a zero-crossing point from being declared until
-   * a certain number of consecutive samples in the 'other' half of the
-   * waveform have been encountered.
-   */
   static byte count = 0;
   if (polarityOfMostRecentVsample != polarityConfirmedOfLastSampleV)
     count++;
