@@ -72,6 +72,14 @@ enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
 enum outputModes {ANTI_FLICKER, NORMAL};
 
+void configureParamsForSelectedOutputMode();
+void timerIsr(void);
+void allGeneralProcessing();
+void confirmPolarity();
+void refreshDisplay();
+void configureValueForDisplay();
+int freeRam();
+
 // ----------------  Extra Features selection ----------------------
 //
 // - WORKLOAD_CHECK, for determining how much spare processing time there is.
