@@ -76,7 +76,6 @@ void configureParamsForSelectedOutputMode();
 void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
-void refreshDisplay();
 void configureValueForDisplay();
 int freeRam();
 
@@ -203,33 +202,12 @@ const float powerCal_grid = 0.0435;  // for CT1
 const float powerCal_diverted = 0.0435;  // for CT2
 
 
-// phaseCal is used to alter the phase of the voltage waveform relative to the
-// current waveform.  The algorithm interpolates between the most recent pair
-// of voltage samples according to the value of phaseCal.
-//
-//    With phaseCal = 1, the most recent sample is used.
-//    With phaseCal = 0, the previous sample is used
-//    With phaseCal = 0.5, the mid-point (average) value in used
-//
-// Values ouside the 0 to 1 range involve extrapolation, rather than interpolation
-// and are not recommended.  By altering the order in which V and I samples are
-// taken, and for how many loops they are stored, it should always be possible to
-// arrange for the optimal value of phaseCal to lie within the range 0 to 1.  When 
-// measuring a resistive load, the voltage and current waveforms should be perfectly 
-// aligned.  In this situation, the Power Factor will be 1.
-//
-// My sketch "PhasecalChecker.ino" provides an easy way to determine the correct 
-// value of phaseCal for any hardware configuration.  An index of my various Mk2-related
-// exhibits is available at http://openenergymonitor.org/emon/node/1757
-//
-
 // Various settings for the 4-digit display, which needs to be refreshed every few mS
 const byte noOfDigitLocations = 4;
 const byte noOfPossibleCharacters = 22;
-#define MAX_DISPLAY_TIME_COUNT 10// no of processing loops between display updates
+#define MAX_DISPLAY_TIME_COUNT 10 // # of processing loops between display updates
 #define UPDATE_PERIOD_FOR_DISPLAYED_DATA 50 // mains cycles
 #define DISPLAY_SHUTDOWN_IN_HOURS 8 // auto-reset after this period of inactivity
-// #define DISPLAY_SHUTDOWN_IN_HOURS 0.01 // for testing that the display clears after 36 seconds
 
 #define ON HIGH
 #define OFF LOW
@@ -237,39 +215,8 @@ const byte noOfPossibleCharacters = 22;
 const byte noOfSegmentsPerDigit = 8; // includes one for the decimal point
 enum digitEnableStates {DIGIT_ENABLED, DIGIT_DISABLED};
 
-byte digitSelectorPin[noOfDigitLocations] = {16,10,13,11};
-byte segmentDrivePin[noOfSegmentsPerDigit] = {2,5,12,6,7,9,8,14};
-
-// The final column of segMap[] is for the decimal point status.  In this version, 
-// the decimal point is treated just like all the other segments, so there is
-// no need to access this column specifically.
-//
-byte segMap[noOfPossibleCharacters][noOfSegmentsPerDigit] = {
-		 ON , ON , ON , ON , ON , ON , OFF, OFF, // '0' <- element 0
-		 OFF, ON , ON , OFF, OFF, OFF, OFF, OFF, // '1' <- element 1
-		 ON , ON , OFF, ON , ON , OFF, ON , OFF, // '2' <- element 2
-		 ON , ON , ON , ON , OFF, OFF, ON , OFF, // '3' <- element 3
-		 OFF, ON , ON , OFF, OFF, ON , ON , OFF, // '4' <- element 4
-		 ON , OFF, ON , ON , OFF, ON , ON , OFF, // '5' <- element 5
-		 ON , OFF, ON , ON , ON , ON , ON , OFF, // '6' <- element 6
-		 ON , ON , ON , OFF, OFF, OFF, OFF, OFF, // '7' <- element 7
-		 ON , ON , ON , ON , ON , ON , ON , OFF, // '8' <- element 8
-		 ON , ON , ON , ON , OFF, ON , ON , OFF, // '9' <- element 9
-		 ON , ON , ON , ON , ON , ON , OFF, ON , // '0.' <- element 10
-		 OFF, ON , ON , OFF, OFF, OFF, OFF, ON , // '1.' <- element 11
-		 ON , ON , OFF, ON , ON , OFF, ON , ON , // '2.' <- element 12
-		 ON , ON , ON , ON , OFF, OFF, ON , ON , // '3.' <- element 13
-		 OFF, ON , ON , OFF, OFF, ON , ON , ON , // '4.' <- element 14
-		 ON , OFF, ON , ON , OFF, ON , ON , ON , // '5.' <- element 15
-		 ON , OFF, ON , ON , ON , ON , ON , ON , // '6.' <- element 16
-		 ON , ON , ON , OFF, OFF, OFF, OFF, ON , // '7.' <- element 17
-		 ON , ON , ON , ON , ON , ON , ON , ON , // '8.' <- element 18
-		 ON , ON , ON , ON , OFF, ON , ON , ON , // '9.' <- element 19
-		 OFF, OFF, OFF, OFF, OFF, OFF, OFF, OFF, // ' ' <- element 20
-		 OFF, OFF, OFF, OFF, OFF, OFF, OFF, ON  // '.' <- element 11
-};
-
-byte charsForDisplay[noOfDigitLocations] = {20,20,20,20}; // all blank
+byte digitSelectorPin[] = {16,10,13,11};
+byte segmentDrivePin[] = {2,5,12,6,7,9,8,14};
 
 boolean EDD_isActive = false; // energy divertion detection
 long requiredExportPerMainsCycle_inIEU;
@@ -717,10 +664,9 @@ void allGeneralProcessing()
   cumVdeltasThisCycle_long += sampleVminusDC_long; // for use with LP filter
   lastSampleVminusDC_long = sampleVminusDC_long;  // required for phaseCal algorithm
   polarityConfirmedOfLastSampleV = polarityConfirmed;  // for identification of half cycle boundaries
-
-  refreshDisplay();
 }
 //  ----- end of main Mk2i code -----
+
 
 void confirmPolarity()
 {
@@ -792,85 +738,21 @@ void configureValueForDisplay()
       val = val/10; }
 
     byte thisDigit = val / 1000;
-    charsForDisplay[0] = thisDigit;     
     val -= 1000 * thisDigit;
         
     thisDigit = val / 100;
-    charsForDisplay[1] = thisDigit;        
     val -= 100 * thisDigit;
         
     thisDigit = val / 10;
-    charsForDisplay[2] = thisDigit;        
     val -= 10 * thisDigit;
-        
-    charsForDisplay[3] = val; 
-  
-    // assign the decimal point location
-    if (energyValueExceeds10kWh) {
-      charsForDisplay[1] += 10; } // dec point after 2nd digit
-    else {
-      charsForDisplay[0] += 10; } // dec point after 1st digit
   }
   else
   {
-    // "walking dots" display
-    charsForDisplay[locationOfDot] = 20; // blank
-
     locationOfDot++;
     if (locationOfDot >= noOfDigitLocations) {
      locationOfDot = 0; }
-     
-    charsForDisplay[locationOfDot] = 21; // dot
   }
 }
-
-void refreshDisplay()
-{
-  // This routine keeps track of which digit is being displayed and checks when its 
-  // display time has expired.  It then makes the necessary adjustments for displaying
-  // the next digit.
-  //   The two versions of the hardware require different logic.
-
-  // This version is more straightforward because the digit-enable lines can be
-  // used to mask out all of the transitory states, including the Decimal Point.
-  // The sequence is:
-  //
-  // 1. de-activate the digit-enable line that was previously active
-  // 2. determine the next location which is to be active
-  // 3. determine the relevant character for the new active location
-  // 4. set up the segment drivers for the character to be displayed (includes the DP)
-  // 5. activate the digit-enable line for the new active location
-
-  static byte displayTime_count = 0;
-  static byte digitLocationThatIsActive = 0;
-
-  displayTime_count++;
-
-  if (displayTime_count > MAX_DISPLAY_TIME_COUNT)
-  { 
-    displayTime_count = 0;   
-    
-    // 1. de-activate the location which is currently being displayed
-    digitalWrite(digitSelectorPin[digitLocationThatIsActive], DIGIT_DISABLED);
-   
-    // 2. determine the next digit location which is to be displayed
-    digitLocationThatIsActive++;
-    if (digitLocationThatIsActive >= noOfDigitLocations) {
-      digitLocationThatIsActive = 0; }
-           
-    // 3. determine the relevant character for the new active location
-    byte digitVal = charsForDisplay[digitLocationThatIsActive];
-    
-    // 4. set up the segment drivers for the character to be displayed (includes the DP)
-    for (byte segment = 0; segment < noOfSegmentsPerDigit; segment++) { 
-      byte segmentState = segMap[digitVal][segment];
-      digitalWrite( segmentDrivePin[segment], segmentState); }
-
-  // 5. activate the digit-enable line for the new active location 
-    digitalWrite(digitSelectorPin[digitLocationThatIsActive], DIGIT_ENABLED);   
-  } 
-
-} // end of refreshDisplay()
 
 int freeRam () {
   extern int __heap_start, *__brkval; 
