@@ -6,11 +6,11 @@
  * the OpenEnergyMonitor forum.  The original version, and other related material, 
  * can be found on my Summary Page at www.openenergymonitor.org/emon/node/1757
  *
- * In this latest version, the pin-allocations have been changed to suit my 
- * PCB-based hardware for the Mk2 PV Router.  The integral voltage sensor is 
- * fed from one of the secondary coils of the transformer.  Current is measured 
- * via Current Transformers at the CT1 and CT1 ports.  
- * 
+ * In this latest version, the pin-allocations have been changed to suit my
+ * PCB-based hardware for the Mk2 PV Router.  The integral voltage sensor is
+ * fed from one of the secondary coils of the transformer.  Current is measured
+ * via Current Transformers at the CT1 and CT2 ports.
+ *
  * CT1 is for 'grid' current, to be measured at the grid supply point.
  * CT2 is for the load current, so that diverted energy can be recorded
  *
