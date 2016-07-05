@@ -122,9 +122,9 @@ long divertedEnergyRecent_IEU = 0; // Hi-res accumulator of limited range
 unsigned int divertedEnergyTotal_Wh = 0; // WattHour register of 63K range
 long IEU_per_Wh; // depends on powerCal, frequency & the 'sweetzone' size.
 
-unsigned long displayShutdown_inMainsCycles;
 unsigned long absenceOfDivertedEnergyCount = 0;
-long mainsCyclesPerHour;
+long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
+unsigned long displayShutdown_inMainsCycles = 8 * mainsCyclesPerHour;
 
 // this setting is only used if anti-flicker mode is enabled
 float offsetOfEnergyThresholdsInAFmode = 0.1; // <-- must not exceeed 0.5
@@ -338,11 +338,6 @@ void setup()
   // to avoid the diverted energy accumulator 'creeping' when the load is not active
   antiCreepLimit_inIEUperMainsCycle = (float)ANTI_CREEP_LIMIT * (1/powerCal_grid);
 
-  mainsCyclesPerHour = (long)CYCLES_PER_SECOND * 
-                             SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
-                             
-  displayShutdown_inMainsCycles = DISPLAY_SHUTDOWN_IN_HOURS * mainsCyclesPerHour;                           
-      
   requiredExportPerMainsCycle_inIEU = (long)REQUIRED_EXPORT_IN_WATTS * (1/powerCal_grid); 
 
 
