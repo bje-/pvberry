@@ -241,16 +241,20 @@ void setup()
   Serial.println();
        
   for (int i = 0; i < noOfSegmentsPerDigit; i++) {
-    pinMode(segmentDrivePin[i], OUTPUT); }
+    pinMode(segmentDrivePin[i], OUTPUT);
+  }
   
   for (int i = 0; i < noOfDigitLocations; i++) {
-    pinMode(digitSelectorPin[i], OUTPUT); }
+    pinMode(digitSelectorPin[i], OUTPUT);
+  }
     
    for (int i = 0; i < noOfDigitLocations; i++) {
-    digitalWrite(digitSelectorPin[i], DIGIT_DISABLED); }
+     digitalWrite(digitSelectorPin[i], DIGIT_DISABLED);
+   }
   
   for (int i = 0; i < noOfSegmentsPerDigit; i++) {
-    digitalWrite(segmentDrivePin[i], OFF); }
+    digitalWrite(segmentDrivePin[i], OFF);
+  }
       
   // When using integer maths, calibration values that have supplied in floating point 
   // form need to be rescaled.
@@ -306,8 +310,8 @@ void setup()
   Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
 
   Serial.print ( "Output mode:    ");
-  if (outputMode == NORMAL) {
-    Serial.println ( "normal"); }
+  if (outputMode == NORMAL)
+    Serial.println ( "normal");
   else 
   {  
     Serial.println ( "anti-flicker");
@@ -425,10 +429,12 @@ void allGeneralProcessing()
   long sampleVminusDC_long = ((long)sampleV<<8) - DCoffset_V_long; 
 
   // determine the polarity of the latest voltage sample
-  if(sampleVminusDC_long > 0) {
-    polarityOfMostRecentVsample = POSITIVE; }
+  if (sampleVminusDC_long > 0) {
+    polarityOfMostRecentVsample = POSITIVE;
+  }
   else {
-    polarityOfMostRecentVsample = NEGATIVE; }
+    polarityOfMostRecentVsample = NEGATIVE;
+  }
   confirmPolarity();
 
   if (polarityConfirmed == POSITIVE)
@@ -440,7 +446,8 @@ void allGeneralProcessing()
       {
 	// a simple routine for checking the performance of this new ISR structure
 	if (sampleSetsDuringThisMainsCycle < lowestNoOfSampleSetsPerMainsCycle) {
-          lowestNoOfSampleSetsPerMainsCycle = sampleSetsDuringThisMainsCycle; }
+          lowestNoOfSampleSetsPerMainsCycle = sampleSetsDuringThisMainsCycle;
+	}
 
 	// Calculate the real power and energy during the last whole mains cycle.
 	//
@@ -489,10 +496,12 @@ void allGeneralProcessing()
         // when conditions change, i.e. when import changes to export, and vici versa.
         //
         if (energyInBucket_long > capacityOfEnergyBucket_long) { 
-          energyInBucket_long = capacityOfEnergyBucket_long; } 
+          energyInBucket_long = capacityOfEnergyBucket_long;
+	} 
         else         
         if (energyInBucket_long < 0) {
-          energyInBucket_long = 0; }  
+          energyInBucket_long = 0;
+	}
   
         if (EDD_isActive) // Energy Diversion Display
         {
@@ -574,14 +583,16 @@ void allGeneralProcessing()
       {
         if (energyInBucket_long < lowerEnergyThreshold_long) {
           // when below the lower threshold, always set the load to "off"
-          nextStateOfLoad = LOAD_OFF; }
+          nextStateOfLoad = LOAD_OFF;
+	}
         else
         if (energyInBucket_long > upperEnergyThreshold_long) {
           // when above the upper threshold, always set the load to "off"
-          nextStateOfLoad = LOAD_ON; }
+          nextStateOfLoad = LOAD_ON;
+	}
         else {
           // otherwise, leave the load's state unchanged (hysteresis)
-             }          
+	}
                   
         // set the Arduino's output pin accordingly, and clear the flag
         digitalWrite(outputForTrigger, nextStateOfLoad);   
@@ -589,9 +600,11 @@ void allGeneralProcessing()
         // update the Energy Diversion Detector
         if (nextStateOfLoad == LOAD_ON) {
           absenceOfDivertedEnergyCount = 0; 
-          EDD_isActive = true; }            
+          EDD_isActive = true;
+	}
         else {
-          absenceOfDivertedEnergyCount++; }   
+          absenceOfDivertedEnergyCount++;
+	}
       }
     }    
   } // end of processing that is specific to samples where the voltage is positive
@@ -614,10 +627,12 @@ void allGeneralProcessing()
       // voltage signal.  This avoids the need to use a HPF as was done for initial Mk2 builds.
       //
       if (DCoffset_V_long < DCoffset_V_min) {
-        DCoffset_V_long = DCoffset_V_min; }
+        DCoffset_V_long = DCoffset_V_min;
+      }
       else  
       if (DCoffset_V_long > DCoffset_V_max) {
-        DCoffset_V_long = DCoffset_V_max; }
+        DCoffset_V_long = DCoffset_V_max;
+      }
         
     } // end of processing that is specific to the first Vsample in each -ve half cycle
   } // end of processing that is specific to samples where the voltage is negative
@@ -672,10 +687,10 @@ void confirmPolarity()
    * waveform have been encountered.
    */
   static byte count = 0;
-  if (polarityOfMostRecentVsample != polarityConfirmedOfLastSampleV) {
-    count++; }
-  else {
-    count = 0; }
+  if (polarityOfMostRecentVsample != polarityConfirmedOfLastSampleV)
+    count++;
+  else
+    count = 0;
 
   if (count > PERSISTENCE_FOR_POLARITY_CHANGE)
   {
