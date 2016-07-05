@@ -678,7 +678,7 @@ void allGeneralProcessing()
   lastSampleVminusDC_long = sampleVminusDC_long;  // required for phaseCal algorithm
   polarityConfirmedOfLastSampleV = polarityConfirmed;  // for identification of half cycle boundaries
 }
-//  ----- end of main Mk2i code -----
+
 
 
 /* This routine prevents a zero-crossing point from being declared
