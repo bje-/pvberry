@@ -76,7 +76,6 @@ void configureParamsForSelectedOutputMode();
 void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
-void configureValueForDisplay();
 int freeRam();
 
 // ----------------  Extra Features selection ----------------------
@@ -530,8 +529,6 @@ void allGeneralProcessing()
             divertedEnergyRecent_IEU = 0;
             EDD_isActive = false; // energy diversion detector is now inactive
           }
-
-          configureValueForDisplay();
         }
         else
         {
@@ -717,42 +714,6 @@ void configureParamsForSelectedOutputMode()
   Serial.println(freeRam());  // a useful value to keep an eye on
 }
 
-// called infrequently, to update the characters to be displayed
-void configureValueForDisplay()
-{
-  static byte locationOfDot = 0;
-
-//  Serial.println(divertedEnergyTotal_Wh);
-
-  if (EDD_isActive)
-  {
-    unsigned int val = divertedEnergyTotal_Wh;
-    boolean energyValueExceeds10kWh;
-
-    if (val < 10000) {
-      // no need to re-scale (display to 3 DPs)
-      energyValueExceeds10kWh = false; }
-    else {
-      // re-scale is needed (display to 2 DPs)
-      energyValueExceeds10kWh = true;
-      val = val/10; }
-
-    byte thisDigit = val / 1000;
-    val -= 1000 * thisDigit;
-        
-    thisDigit = val / 100;
-    val -= 100 * thisDigit;
-        
-    thisDigit = val / 10;
-    val -= 10 * thisDigit;
-  }
-  else
-  {
-    locationOfDot++;
-    if (locationOfDot >= noOfDigitLocations) {
-     locationOfDot = 0; }
-  }
-}
 
 int freeRam () {
   extern int __heap_start, *__brkval; 
