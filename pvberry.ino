@@ -62,7 +62,6 @@
 // Change these values to suit the local mains frequency and supply meter
 #define CYCLES_PER_SECOND 50
 #define WORKING_RANGE_IN_JOULES 3600
-#define REQUIRED_EXPORT_IN_WATTS 0 // when set to a negative value, this acts as a PV generator 
 
 // to prevent the diverted energy total from 'creeping'
 #define ANTI_CREEP_LIMIT 5 // in Joules per mains cycle (has no effect when set to 0)
@@ -216,7 +215,6 @@ byte digitSelectorPin[] = {16,10,13,11};
 byte segmentDrivePin[] = {2,5,12,6,7,9,8,14};
 
 boolean EDD_isActive = false; // energy divertion detection
-long requiredExportPerMainsCycle_inIEU;
 
 
 void setup()
@@ -283,9 +281,6 @@ void setup()
   // to avoid the diverted energy accumulator 'creeping' when the load is not active
   antiCreepLimit_inIEUperMainsCycle = (float)ANTI_CREEP_LIMIT * (1/powerCal_grid);
 
-  requiredExportPerMainsCycle_inIEU = (long)REQUIRED_EXPORT_IN_WATTS * (1/powerCal_grid); 
-
-
   // Define operating limits for the LP filter which identifies DC offset in the voltage 
   // sample stream.  By limiting the output range, the filter always should start up 
   // correctly.
@@ -323,8 +318,6 @@ void setup()
   
   Serial.print ("Anti-creep limit (Joules / mains cycle) = ");
   Serial.println (ANTI_CREEP_LIMIT);
-  Serial.print ("Export rate (Watts) = ");
-  Serial.println (REQUIRED_EXPORT_IN_WATTS);
   
   Serial.print ("zero-crossing persistence (sample sets) = ");
   Serial.println (PERSISTENCE_FOR_POLARITY_CHANGE);
@@ -464,8 +457,6 @@ void allGeneralProcessing()
         long realPower_grid = sumP_grid / sampleSetsDuringThisMainsCycle; // proportional to Watts
         long realPower_diverted = sumP_diverted / sampleSetsDuringThisMainsCycle; // proportional to Watts
    
-        realPower_grid -= requiredExportPerMainsCycle_inIEU; // <- useful for PV simulation
- 
         // Next, the energy content of this power rating needs to be determined.  Energy is 
         // power multiplied by time, so the next step is normally to multiply the measured
         // value of power by the time over which it was measured.
@@ -509,9 +500,7 @@ void allGeneralProcessing()
           // accumulator which operates with maximum precision.
           
           if (realEnergy_diverted < antiCreepLimit_inIEUperMainsCycle)
-          {
             realEnergy_diverted = 0;
-          }  
 
           divertedEnergyRecent_IEU += realEnergy_diverted;
       
@@ -540,9 +529,7 @@ void allGeneralProcessing()
           }
         }
         else
-        {
           timerForDisplayUpdate++;
-        }
 
         // continuity checker
         sampleCount_forContinuityChecker++;
