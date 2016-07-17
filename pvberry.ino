@@ -205,15 +205,6 @@ const byte noOfPossibleCharacters = 22;
 #define UPDATE_PERIOD_FOR_DISPLAYED_DATA 50 // mains cycles
 #define DISPLAY_SHUTDOWN_IN_HOURS 8 // auto-reset after this period of inactivity
 
-#define ON HIGH
-#define OFF LOW
-
-const byte noOfSegmentsPerDigit = 8; // includes one for the decimal point
-enum digitEnableStates {DIGIT_ENABLED, DIGIT_DISABLED};
-
-byte digitSelectorPin[] = {16,10,13,11};
-byte segmentDrivePin[] = {2,5,12,6,7,9,8,14};
-
 boolean EDD_isActive = false; // energy divertion detection
 
 
@@ -233,22 +224,6 @@ void setup()
   Serial.println("Sketch ID:      pvberry.ino");
   Serial.println();
        
-  for (int i = 0; i < noOfSegmentsPerDigit; i++) {
-    pinMode(segmentDrivePin[i], OUTPUT);
-  }
-  
-  for (int i = 0; i < noOfDigitLocations; i++) {
-    pinMode(digitSelectorPin[i], OUTPUT);
-  }
-    
-   for (int i = 0; i < noOfDigitLocations; i++) {
-     digitalWrite(digitSelectorPin[i], DIGIT_DISABLED);
-   }
-  
-  for (int i = 0; i < noOfSegmentsPerDigit; i++) {
-    digitalWrite(segmentDrivePin[i], OFF);
-  }
-      
   // When using integer maths, calibration values that have supplied in floating point 
   // form need to be rescaled.
 
@@ -381,18 +356,22 @@ void timerIsr(void)
 }
 
 
-// When using interrupt-based logic, the main processor waits in loop() until the 
-// dataReady flag has been set by the ADC.  Once this flag has been set, the main
-// processor clears the flag and proceeds with all the processing for one set of 
-// V & I samples.  It then returns to loop() to wait for the next set to become
-// available.
-//   If the next set of samples become available before the processing of the
-// previous set has been completed, data could be lost.  This situation can be
-// avoided by prior use of the WORKLOAD_CHECK mode.  Using this facility, the amount
-// of spare processing capacity per loop can be determined.
-//   If there is insufficient processing capacity to do all that is required, the 
-// base workload can be reduced by increasing the duration of ADC_TIMER_PERIOD.
-//
+// When using interrupt-based logic, the main processor waits in
+// loop() until the dataReady flag has been set by the ADC.  Once this
+// flag has been set, the main processor clears the flag and proceeds
+// with all the processing for one set of V & I samples.  It then
+// returns to loop() to wait for the next set to become available.
+
+// If the next set of samples become available before the processing
+// of the previous set has been completed, data could be lost.  This
+// situation can be avoided by prior use of the WORKLOAD_CHECK mode.
+// Using this facility, the amount of spare processing capacity per
+// loop can be determined.
+
+// If there is insufficient processing capacity to do all that is
+// required, the base workload can be reduced by increasing the
+// duration of ADC_TIMER_PERIOD.
+
 void loop()
 {
   if (dataReady)   // flag is set after every set of ADC conversions
@@ -438,9 +417,8 @@ void allGeneralProcessing()
       if (beyondStartUpPhase)
       {
 	// a simple routine for checking the performance of this new ISR structure
-	if (sampleSetsDuringThisMainsCycle < lowestNoOfSampleSetsPerMainsCycle) {
+	if (sampleSetsDuringThisMainsCycle < lowestNoOfSampleSetsPerMainsCycle)
           lowestNoOfSampleSetsPerMainsCycle = sampleSetsDuringThisMainsCycle;
-	}
 
 	// Calculate the real power and energy during the last whole mains cycle.
 	//
@@ -453,7 +431,7 @@ void allGeneralProcessing()
 	// a good idea when integer maths is being used.  To keep the numbers large, and also
 	// to save time, calibration of power is omitted at this stage.  Real Power (stored as
 	// a 'long') is therefore (1/powerCal) times larger than the actual power in Watts.
-	//
+
         long realPower_grid = sumP_grid / sampleSetsDuringThisMainsCycle; // proportional to Watts
         long realPower_diverted = sumP_diverted / sampleSetsDuringThisMainsCycle; // proportional to Watts
    
@@ -469,7 +447,7 @@ void allGeneralProcessing()
         // may be helpful so as to minimise confusion.  
         //   The 'energy' variable below is CYCLES_PER_SECOND * (1/powerCal) times larger than 
         // the actual energy in Joules.
-        //
+
         long realEnergy_grid = realPower_grid; 
         long realEnergy_diverted = realPower_diverted; 
         
@@ -486,13 +464,10 @@ void allGeneralProcessing()
         // Apply max and min limits to bucket's level.  This is to ensure correct operation
         // when conditions change, i.e. when import changes to export, and vici versa.
         //
-        if (energyInBucket_long > capacityOfEnergyBucket_long) { 
+        if (energyInBucket_long > capacityOfEnergyBucket_long)
           energyInBucket_long = capacityOfEnergyBucket_long;
-	} 
-        else         
-        if (energyInBucket_long < 0) {
+        else if (energyInBucket_long < 0)
           energyInBucket_long = 0;
-	}
   
         if (EDD_isActive) // Energy Diversion Display
         {
@@ -544,7 +519,6 @@ void allGeneralProcessing()
         sampleSetsDuringThisMainsCycle = 0;
         sumP_grid = 0;
         sumP_diverted = 0;
-
       }
       else
       {  
@@ -577,9 +551,7 @@ void allGeneralProcessing()
           // when above the upper threshold, always set the load to "off"
           nextStateOfLoad = LOAD_ON;
 	}
-        else {
-          // otherwise, leave the load's state unchanged (hysteresis)
-	}
+	// (else) otherwise, leave the load's state unchanged (hysteresis)
                   
         // set the Arduino's output pin accordingly, and clear the flag
         digitalWrite(outputForTrigger, nextStateOfLoad);   
@@ -613,14 +585,11 @@ void allGeneralProcessing()
       // output value needs to be prevented from drifting beyond the likely range of the 
       // voltage signal.  This avoids the need to use a HPF as was done for initial Mk2 builds.
       //
-      if (DCoffset_V_long < DCoffset_V_min) {
+      if (DCoffset_V_long < DCoffset_V_min)
         DCoffset_V_long = DCoffset_V_min;
-      }
-      else  
-      if (DCoffset_V_long > DCoffset_V_max) {
+      else if (DCoffset_V_long > DCoffset_V_max)
         DCoffset_V_long = DCoffset_V_max;
-      }
-        
+
     } // end of processing that is specific to the first Vsample in each -ve half cycle
   } // end of processing that is specific to samples where the voltage is negative
   
