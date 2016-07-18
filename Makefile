@@ -288,7 +288,7 @@ endif
 endif
 
 # flags
-CPPFLAGS += -Os -Wall -fno-exceptions -ffunction-sections -fdata-sections
+CPPFLAGS += -Os -W -Wall -Wunused -Wextra -fno-exceptions -ffunction-sections -fdata-sections
 CPPFLAGS += -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums
 CPPFLAGS += -mmcu=$(BOARD_BUILD_MCU)
 CPPFLAGS += -DF_CPU=$(BOARD_BUILD_FCPU) -DARDUINO=$(ARDUINOCONST)
