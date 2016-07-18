@@ -53,16 +53,17 @@
 
 #include <myassert.h>
 
-#define ADC_TIMER_PERIOD 125 // uS (determines the sampling rate / amount of idle time)
+// uS (determines the sampling rate / amount of idle time)
+const int ADC_TIMER_PERIOD = 125;
 
 // Physical constants, please do not change!
-#define SECONDS_PER_MINUTE 60
-#define MINUTES_PER_HOUR 60
-#define JOULES_PER_WATT_HOUR 3600 //  (0.001 kWh = 3600 Joules)
+const int SECONDS_PER_MINUTE = 60;
+const int MINUTES_PER_HOUR = 60;
+const int JOULES_PER_WATT_HOUR = 3600;   //  (0.001 kWh = 3600 Joules)
 
 // Change these values to suit the local mains frequency and supply meter
-#define CYCLES_PER_SECOND 50
-#define WORKING_RANGE_IN_JOULES 3600
+const int CYCLES_PER_SECOND = 50;
+const int WORKING_RANGE_IN_JOULES = 3600;
 
 enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
@@ -73,8 +74,6 @@ void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
 
-// ----------------  Extra Features selection ----------------------
-//
 // The power-diversion logic can operate in either of two modes:
 //
 // - NORMAL, where the load switches rapidly on/off to maintain a constant energy level.
@@ -91,7 +90,7 @@ const byte outputForTrigger = 4; // <-- an output which is active-low
 // allocation of analogue pins which are not dependent on the display type that is in use
 // **************************************************************************************
 const byte voltageSensor = 3;          // A3 is for the voltage sensor
-const byte currentSensor_grid = 5;     // A5 is for CT1 which measures grid current
+const byte currentSensor = 5;     // A5 is for CT1 which measures grid current
 
 const byte delayBeforeSerialStarts = 3;  // in seconds, to allow Serial window to be opened
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
@@ -132,67 +131,8 @@ int sampleCount_forContinuityChecker;
 int sampleSetsDuringThisMainsCycle;
 int lowestNoOfSampleSetsPerMainsCycle;
 
-// Calibration values
-//-------------------
-// Two calibration values are used: powerCal and phaseCal.
-// With most hardware, the default values are likely to work fine without
-// need for change.  A full explanation of each of these values now follows:
-//
-// powerCal is a floating point variable which is used for converting the
-// product of voltage and current samples into Watts.
-//
-// The correct value of powerCal is dependent on the hardware that is
-// in use.  For best resolution, the hardware should be configured so that the
-// voltage and current waveforms each span most of the ADC's usable range.  For
-// many systems, the maximum power that will need to be measured is around 3kW.
-//
-// My sketch "MinAndMaxValues.ino" provides a good starting point for
-// system setup.  First arrange for the CT to be clipped around either core of a
-// cable which supplies a suitable load; then run the tool.  The resulting values
-// should sit nicely within the range 0-1023.  To allow some room for safety,
-// a margin of around 100 levels should be left at either end.  This gives a
-// output range of around 800 ADC levels, which is 80% of its usable range.
-//
-// My sketch "RawSamplesTool.ino" provides a one-shot visual display of the
-// voltage and current waveforms.  This provides an easy way for the user to be
-// confident that their system has been set up correctly for the power levels
-// that are to be measured.
-//
-// The ADC has an input range of 0-5V and an output range of 0-1023 levels.
-// The purpose of each input sensor is to convert the measured parameter into a
-// low-voltage signal which fits nicely within the ADC's input range.
-//
-// In the case of 240V mains voltage, the numerical value of the input signal
-// in Volts is likely to be fairly similar to the output signal in ADC levels.
-// 240V AC has a peak-to-peak amplitude of 679V, which is not far from the ideal
-// output range.  Stated more formally, the conversion rate of the overall system
-// for measuring VOLTAGE is likely to be around 1 ADC-step per Volt (RMS).
-//
-// In the case of AC current, however, the situation is very different.  At
-// mains voltage, a power of 3kW corresponds to an RMS current of 12.5A which
-// has a peak-to-peak range of 35A.  This is smaller than the output signal by
-// around a factor of twenty.  The conversion rate of the overall system for
-// measuring CURRENT is therefore likely to be around 20 ADC-steps per Amp.
-//
-// When calculating "real power", which is what this code does, the individual
-// conversion rates for voltage and current are not of importance.  It is
-// only the conversion rate for POWER which is important.  This is the
-// product of the individual conversion rates for voltage and current.  It
-// therefore has the units of ADC-steps squared per Watt.  Most systems will
-// have a power conversion rate of around 20 (ADC-steps squared per Watt).
-//
-// powerCal is the RECIPR0CAL of the power conversion rate.  A good value
-// to start with is therefore 1/20 = 0.05 (Watts per ADC-step squared)
-//
-const float powerCal_grid = 0.0435;  // for CT1
 
-
-// Various settings for the 4-digit display, which needs to be refreshed every few mS
-const byte noOfDigitLocations = 4;
-const byte noOfPossibleCharacters = 22;
-#define MAX_DISPLAY_TIME_COUNT 10 // # of processing loops between display updates
-#define UPDATE_PERIOD_FOR_DISPLAYED_DATA 50 // mains cycles
-#define DISPLAY_SHUTDOWN_IN_HOURS 8 // auto-reset after this period of inactivity
+const float powerCal = 0.0435;
 
 
 void setup()
@@ -227,7 +167,7 @@ void setup()
     //
     // For the flow of energy at the 'grid' connection point (CT1)
     capacityOfEnergyBucket_long =
-        (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal_grid);
+        (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal);
     energyInBucket_long = 0;
 
     // Define operating limits for the LP filter which identifies DC offset in the voltage
@@ -258,8 +198,8 @@ void setup()
     }
 
     Serial.println();
-    Serial.print("powerCal_grid =      ");
-    Serial.println(powerCal_grid,4);
+    Serial.print("powerCal =      ");
+    Serial.println(powerCal,4);
 
     Serial.print("zero-crossing persistence (sample sets) = ");
     Serial.println(PERSISTENCE_FOR_POLARITY_CHANGE);
@@ -271,31 +211,16 @@ void setup()
     Serial.println ("----");
 }
 
-// An Interrupt Service Routine is now defined in which the ADC is
-// instructed to measure each analogue input in sequence.  A "data
-// ready" flag is set after each voltage conversion has been
-// completed.
-
-// For each set of samples, the two samples for current are taken
-// before the one for voltage.  This is appropriate because each
-// waveform current is generally slightly advanced relative to the
-// waveform for voltage.  The data ready flag is cleared within
-// loop().
-
-// This Interrupt Service Routine is for use when the ADC is fixed
-// timer mode.  It is executed whenever the ADC timer expires.  In
-// this mode, the next ADC conversion is initiated from within this
-// ISR.
 
 void timerIsr(void)
 {
     static unsigned char sample_index = 0;
-    static int  sampleI_raw;
+    static int sampleI_raw;
 
     switch (sample_index) {
     case 0:
         sampleV = ADC;                    // store the ADC value (Voltage)
-        ADMUX = 0x40 + currentSensor_grid; // set up the next conversion, which is for Grid Current
+        ADMUX = 0x40 + currentSensor; // set up the next conversion, which is for Grid Current
         ADCSRA |= (1<<ADSC);              // start the ADC
         sample_index++;                   // jump to state 1
         sampleI = sampleI_raw;
@@ -314,22 +239,6 @@ void timerIsr(void)
 }
 
 
-// When using interrupt-based logic, the main processor waits in
-// loop() until the dataReady flag has been set by the ADC.  Once this
-// flag has been set, the main processor clears the flag and proceeds
-// with all the processing for one set of V & I samples.  It then
-// returns to loop() to wait for the next set to become available.
-
-// If the next set of samples become available before the processing
-// of the previous set has been completed, data could be lost.  This
-// situation can be avoided by prior use of the WORKLOAD_CHECK mode.
-// Using this facility, the amount of spare processing capacity per
-// loop can be determined.
-
-// If there is insufficient processing capacity to do all that is
-// required, the base workload can be reduced by increasing the
-// duration of ADC_TIMER_PERIOD.
-
 void loop()
 {
     if (dataReady) { // flag is set after every set of ADC conversions
@@ -338,11 +247,6 @@ void loop()
     }
 }
 
-
-// This routine is called to process each set of V & I samples. The main processor and
-// the ADC work autonomously, their operation being only linked via the dataReady flag.
-// As soon as a new set of data is made available by the ADC, the main processor can
-// start to work on it immediately.
 
 void allGeneralProcessing()
 {
