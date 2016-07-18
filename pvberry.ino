@@ -57,8 +57,7 @@
 const int ADC_TIMER_PERIOD = 125;
 
 // Physical constants, please do not change!
-const int SECONDS_PER_MINUTE = 60;
-const int MINUTES_PER_HOUR = 60;
+const int SECONDS_PER_HOUR = 3600;
 const int JOULES_PER_WATT_HOUR = 3600;   //  (0.001 kWh = 3600 Joules)
 
 // Change these values to suit the local mains frequency and supply meter
@@ -90,7 +89,7 @@ const byte outputForTrigger = 4; // <-- an output which is active-low
 // allocation of analogue pins which are not dependent on the display type that is in use
 // **************************************************************************************
 const byte voltageSensor = 3;          // A3 is for the voltage sensor
-const byte currentSensor = 5;     // A5 is for CT1 which measures grid current
+const byte currentSensor = 5;          // A5 is for CT1 which measures grid current
 
 const byte delayBeforeSerialStarts = 3;  // in seconds, to allow Serial window to be opened
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
@@ -109,7 +108,7 @@ long DCoffset_V_long;              // <--- for LPF
 long DCoffset_V_min;               // <--- for LPF
 long DCoffset_V_max;               // <--- for LPF
 
-long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
+long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_HOUR;
 
 // this setting is only used if anti-flicker mode is enabled
 float offsetOfEnergyThresholdsInAFmode = 0.1; // <-- must not exceeed 0.5
@@ -214,26 +213,25 @@ void setup()
 
 void timerIsr(void)
 {
-    static unsigned char sample_index = 0;
+    static unsigned char state = 0;
     static int sampleI_raw;
 
-    switch (sample_index) {
+    switch (state) {
     case 0:
         sampleV = ADC;                    // store the ADC value (Voltage)
-        ADMUX = 0x40 + currentSensor; // set up the next conversion, which is for Grid Current
+        ADMUX = 0x40 + currentSensor;     // set up the next conversion, which is for Grid Current
         ADCSRA |= (1<<ADSC);              // start the ADC
-        sample_index++;                   // jump to state 1
+        state = 1;                        // jump to state 1
         sampleI = sampleI_raw;
         dataReady = true;                 // all three ADC values can now be processed
         break;
     case 1:
-        sampleI_raw = ADC;           // store the ADC value (Grid Current)
+        sampleI_raw = ADC;                // store the ADC value (Grid Current)
         ADMUX = 0x40 + voltageSensor;	  // set up the next conversion, which is for Voltage
         ADCSRA |= (1<<ADSC);              // start the ADC
-        sample_index = 0;                 // back to state 0
+        state = 0;                        // back to state 0
         break;
     default:
-        // should never get here
         unreachable();
     }
 }
@@ -241,8 +239,9 @@ void timerIsr(void)
 
 void loop()
 {
-    if (dataReady) { // flag is set after every set of ADC conversions
-        dataReady = false; // reset the flag
+    if (dataReady) {
+        // flag is set after every set of ADC conversions
+        dataReady = false;
         allGeneralProcessing(); // executed once for each set of V&I samples
     }
 }
