@@ -21,21 +21,11 @@ const int WORKING_RANGE_IN_JOULES = 3600;
 
 enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
-enum outputModes {ANTI_FLICKER, NORMAL};
 
 void configureParamsForSelectedOutputMode();
 void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
-
-// The power-diversion logic can operate in either of two modes:
-//
-// - NORMAL, where the load switches rapidly on/off to maintain a constant energy level.
-// - ANTI_FLICKER, whereby the repetition rate is reduced to avoid rapid fluctuations
-//    of the local mains voltage.
-//
-// The output mode is determined in realtime via a selector switch
-enum outputModes outputMode;
 
 const byte outputForTrigger = 4;       // <-- an output which is active-low
 const byte voltageSensor = 3;          // A3 is for the voltage sensor
@@ -91,8 +81,6 @@ void setup()
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF); // the external trigger is active low
 
-    outputMode = NORMAL;
-
     delay(delayBeforeSerialStarts * 1000); // allow time to open Serial monitor
     Serial.begin(9600);
     Serial.println();
@@ -137,15 +125,6 @@ void setup()
     Timer1.initialize(ADC_TIMER_PERIOD);   // set Timer1 interval
     Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
 
-    Serial.print("Output mode:    ");
-    if (outputMode == NORMAL)
-        Serial.println( "normal");
-    else {
-        Serial.println( "anti-flicker");
-        Serial.print( "  offsetOfEnergyThresholds  = ");
-        Serial.println( offsetOfEnergyThresholdsInAFmode);
-    }
-
     Serial.println();
     Serial.print("powerCal =      ");
     Serial.println(powerCal,4);
@@ -155,9 +134,10 @@ void setup()
     Serial.print("continuity sampling display rate (mains cycles) = ");
     Serial.println(CONTINUITY_CHECK_MAXCOUNT);
 
-    configureParamsForSelectedOutputMode();
-
-    Serial.println ("----");
+    lowerEnergyThreshold_long =
+	capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
+    upperEnergyThreshold_long =
+	capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
 }
 
 
@@ -374,26 +354,4 @@ void confirmPolarity()
         count = 0;
         polarityConfirmed = polarityOfMostRecentVsample;
     }
-}
-
-
-void configureParamsForSelectedOutputMode()
-{
-    if (outputMode == ANTI_FLICKER) {
-        lowerEnergyThreshold_long =
-            capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
-        upperEnergyThreshold_long =
-            capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
-    } else {
-        lowerEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;
-        upperEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;
-    }
-
-    // display relevant settings for selected output mode
-    Serial.print("  capacityOfEnergyBucket_long = ");
-    Serial.println(capacityOfEnergyBucket_long);
-    Serial.print("  lowerEnergyThreshold_long   = ");
-    Serial.println(lowerEnergyThreshold_long);
-    Serial.print("  upperEnergyThreshold_long   = ");
-    Serial.println(upperEnergyThreshold_long);
 }
