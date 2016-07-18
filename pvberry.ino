@@ -198,7 +198,7 @@ const byte noOfPossibleCharacters = 22;
 void setup()
 {
     pinMode(outputForTrigger, OUTPUT);
-    digitalWrite (outputForTrigger, LOAD_OFF); // the external trigger is active low
+    digitalWrite(outputForTrigger, LOAD_OFF); // the external trigger is active low
 
     // use NORMAL for now
     outputMode = NORMAL;
@@ -237,9 +237,9 @@ void setup()
     DCoffset_V_min = (long)(512L - 100) * 256; // mid-point of ADC minus a working margin
     DCoffset_V_max = (long)(512L + 100) * 256; // mid-point of ADC plus a working margin
 
-    Serial.print ("ADC mode:       ");
-    Serial.print (ADC_TIMER_PERIOD);
-    Serial.println ( " uS fixed timer");
+    Serial.print("ADC mode:       ");
+    Serial.print(ADC_TIMER_PERIOD);
+    Serial.println( " uS fixed timer");
 
     // Set up the ADC to be triggered by a hardware timer of fixed duration
     ADCSRA  = (1<<ADPS0)+(1<<ADPS1)+(1<<ADPS2);  // Set the ADC's clock to system clock / 128
@@ -248,26 +248,23 @@ void setup()
     Timer1.initialize(ADC_TIMER_PERIOD);   // set Timer1 interval
     Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
 
-    Serial.print ( "Output mode:    ");
+    Serial.print("Output mode:    ");
     if (outputMode == NORMAL)
-        Serial.println ( "normal");
+        Serial.println( "normal");
     else {
-        Serial.println ( "anti-flicker");
-        Serial.print ( "  offsetOfEnergyThresholds  = ");
-        Serial.println ( offsetOfEnergyThresholdsInAFmode);
+        Serial.println( "anti-flicker");
+        Serial.print( "  offsetOfEnergyThresholds  = ");
+        Serial.println( offsetOfEnergyThresholdsInAFmode);
     }
 
-    Serial.print ( "Extra Features: ");
-    Serial.println ("none");
-    Serial.println ();
+    Serial.println();
+    Serial.print("powerCal_grid =      ");
+    Serial.println(powerCal_grid,4);
 
-    Serial.print ( "powerCal_grid =      ");
-    Serial.println (powerCal_grid,4);
-
-    Serial.print ("zero-crossing persistence (sample sets) = ");
-    Serial.println (PERSISTENCE_FOR_POLARITY_CHANGE);
-    Serial.print ("continuity sampling display rate (mains cycles) = ");
-    Serial.println (CONTINUITY_CHECK_MAXCOUNT);
+    Serial.print("zero-crossing persistence (sample sets) = ");
+    Serial.println(PERSISTENCE_FOR_POLARITY_CHANGE);
+    Serial.print("continuity sampling display rate (mains cycles) = ");
+    Serial.println(CONTINUITY_CHECK_MAXCOUNT);
 
     configureParamsForSelectedOutputMode();
 
@@ -502,7 +499,7 @@ void allGeneralProcessing()
     long filtI_div4 = sampleIminusDC_grid>>2; // reduce to 16-bits (now x64, or 2^6)
     long instP = filtV_div4 * filtI_div4;  // 32-bits (now x4096, or 2^12)
     instP = instP>>12;     // scaling is now x1, as for Mk2 (V_ADC x I_ADC)
-    sumP_grid +=instP; // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
+    sumP_grid += instP; // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
 
     sampleSetsDuringThisMainsCycle++;
 
