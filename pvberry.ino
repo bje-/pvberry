@@ -52,6 +52,8 @@
 #include <Arduino.h>
 #include <TimerOne.h>
 
+#include <myassert.h>
+
 #define ADC_TIMER_PERIOD 125 // uS (determines the sampling rate / amount of idle time)
 
 // Physical constants, please do not change!
@@ -325,33 +327,26 @@ void timerIsr(void)
 {
     static unsigned char sample_index = 0;
     static int  sampleI_grid_raw;
-    static int sampleI_diverted_raw;
 
-
-    switch(sample_index) {
+    switch (sample_index) {
     case 0:
         sampleV = ADC;                    // store the ADC value (this one is for Voltage)
-        ADMUX = 0x40 + currentSensor_diverted;  // set up the next conversion, which is for Diverted Current
+        ADMUX = 0x40 + currentSensor_grid; // set up the next conversion, which is for Diverted Current
         ADCSRA |= (1<<ADSC);              // start the ADC
-        sample_index++;                   // increment the control flag
-        sampleI_diverted = sampleI_diverted_raw;
+        sample_index = 2;                 // jump to state 2
         sampleI_grid = sampleI_grid_raw;
         dataReady = true;                 // all three ADC values can now be processed
         break;
     case 1:
-        sampleI_diverted_raw = ADC;               // store the ADC value (this one is for Diverted Current)
-        ADMUX = 0x40 + currentSensor_grid;  // set up the next conversion, which is for Grid Current
-        ADCSRA |= (1<<ADSC);              // start the ADC
-        sample_index++;                   // increment the control flag
-        break;
+        unreachable();
     case 2:
         sampleI_grid_raw = ADC;               // store the ADC value (this one is for Grid Current)
         ADMUX = 0x40 + voltageSensor;  // set up the next conversion, which is for Voltage
         ADCSRA |= (1<<ADSC);              // start the ADC
-        sample_index = 0;                 // reset the control flag
+        sample_index = 0;                 // back to state 0
         break;
     default:
-        sample_index = 0;                 // to prevent lockup (should never get here)
+        unreachable();			  // should never get here
     }
 }
 
