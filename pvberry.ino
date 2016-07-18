@@ -333,20 +333,19 @@ void timerIsr(void)
         sampleV = ADC;                    // store the ADC value (this one is for Voltage)
         ADMUX = 0x40 + currentSensor_grid; // set up the next conversion, which is for Diverted Current
         ADCSRA |= (1<<ADSC);              // start the ADC
-        sample_index = 2;                 // jump to state 2
+        sample_index++;                   // jump to state 1
         sampleI_grid = sampleI_grid_raw;
         dataReady = true;                 // all three ADC values can now be processed
         break;
     case 1:
-        unreachable();
-    case 2:
         sampleI_grid_raw = ADC;               // store the ADC value (this one is for Grid Current)
         ADMUX = 0x40 + voltageSensor;  // set up the next conversion, which is for Voltage
         ADCSRA |= (1<<ADSC);              // start the ADC
         sample_index = 0;                 // back to state 0
         break;
     default:
-        unreachable();			  // should never get here
+        // should never get here
+        unreachable();
     }
 }
 
