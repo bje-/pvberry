@@ -83,9 +83,7 @@ void setup()
 
     delay(delayBeforeSerialStarts * 1000); // allow time to open Serial monitor
     Serial.begin(9600);
-    Serial.println();
-    Serial.println("-------------------------------------");
-    Serial.println("Sketch ID:      pvberry.ino");
+    Serial.println("pvberry.ino");
     Serial.println();
 
     // When using integer maths, calibration values that have been
@@ -126,8 +124,7 @@ void setup()
     Timer1.attachInterrupt( timerIsr );    // declare timerIsr() as interrupt service routine
 
     Serial.println();
-    Serial.print("powerCal =      ");
-    Serial.println(powerCal,4);
+    Serial.print("powerCal = " + String(powerCal, 4));
 
     Serial.print("zero-crossing persistence (sample sets) = ");
     Serial.println(PERSISTENCE_FOR_POLARITY_CHANGE);
@@ -188,7 +185,7 @@ void allGeneralProcessing()
 
     // remove DC offset from the raw voltage sample by subtracting the accurate value
     // as determined by a LP filter.
-    long sampleVminusDC_long = ((long)sampleV<<8) - DCoffset_V_long;
+    long sampleVminusDC_long = ((long) sampleV<<8) - DCoffset_V_long;
 
     // determine the polarity of the latest voltage sample
     polarityOfMostRecentVsample = (sampleVminusDC_long > 0) ? POSITIVE : NEGATIVE;
