@@ -12,7 +12,6 @@
  * via Current Transformers at the CT1 and CT2 ports.
  *
  * CT1 is for 'grid' current, to be measured at the grid supply point.
- * CT2 is for the load current, so that diverted energy can be recorded
  *
  * September 2014: renamed as Mk2_bothDisplays_2, with these changes:
  * - cycleCount removed (was not actually used in this sketch, but could have overflowed);
@@ -65,10 +64,6 @@
 #define CYCLES_PER_SECOND 50
 #define WORKING_RANGE_IN_JOULES 3600
 
-// to prevent the diverted energy total from 'creeping'
-#define ANTI_CREEP_LIMIT 5 // in Joules per mains cycle (has no effect when set to 0)
-long antiCreepLimit_inIEUperMainsCycle;
-
 enum polarities {NEGATIVE, POSITIVE};
 enum loadStates {LOAD_ON, LOAD_OFF}; // the external trigger device is active low
 enum outputModes {ANTI_FLICKER, NORMAL};
@@ -96,7 +91,6 @@ const byte outputForTrigger = 4; // <-- an output which is active-low
 // allocation of analogue pins which are not dependent on the display type that is in use
 // **************************************************************************************
 const byte voltageSensor = 3;          // A3 is for the voltage sensor
-const byte currentSensor_diverted = 4; // A4 is for CT2 which measures diverted current
 const byte currentSensor_grid = 5;     // A5 is for CT1 which measures grid current
 
 const byte delayBeforeSerialStarts = 3;  // in seconds, to allow Serial window to be opened
@@ -115,11 +109,8 @@ long upperEnergyThreshold_long;    // for turning load on
 long DCoffset_V_long;              // <--- for LPF
 long DCoffset_V_min;               // <--- for LPF
 long DCoffset_V_max;               // <--- for LPF
-long divertedEnergyRecent_IEU = 0; // Hi-res accumulator of limited range
-unsigned int divertedEnergyTotal_Wh = 0; // WattHour register of 63K range
 long IEU_per_Wh; // depends on powerCal, frequency & the 'sweetzone' size.
 
-unsigned long absenceOfDivertedEnergyCount = 0;
 long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
 unsigned long displayShutdown_inMainsCycles = 8 * mainsCyclesPerHour;
 
@@ -129,7 +120,6 @@ float offsetOfEnergyThresholdsInAFmode = 0.1; // <-- must not exceeed 0.5
 // for interaction between the main processor and the ISRs
 volatile boolean dataReady = false;
 volatile int sampleI_grid;
-volatile int sampleI_diverted;
 volatile int sampleV;
 
 // For an enhanced polarity detection mechanism, which includes a persistence check
@@ -197,7 +187,6 @@ int lowestNoOfSampleSetsPerMainsCycle;
 // to start with is therefore 1/20 = 0.05 (Watts per ADC-step squared)
 //
 const float powerCal_grid = 0.0435;  // for CT1
-const float powerCal_diverted = 0.0435;  // for CT2
 
 
 // Various settings for the 4-digit display, which needs to be refreshed every few mS
@@ -206,8 +195,6 @@ const byte noOfPossibleCharacters = 22;
 #define MAX_DISPLAY_TIME_COUNT 10 // # of processing loops between display updates
 #define UPDATE_PERIOD_FOR_DISPLAYED_DATA 50 // mains cycles
 #define DISPLAY_SHUTDOWN_IN_HOURS 8 // auto-reset after this period of inactivity
-
-boolean EDD_isActive = false; // energy divertion detection
 
 
 void setup()
@@ -245,19 +232,6 @@ void setup()
         (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal_grid);
     energyInBucket_long = 0;
 
-    // For recording the accumulated amount of diverted energy data (using CT2), a similar
-    // calibration mechanism is required.  Rather than a bucket with a fixed capacity, the
-    // accumulator for diverted energy just needs to be scaled correctly.  As soon as its
-    // value exceeds 1 Wh, an associated WattHour register is incremented, and the
-    // accumulator's value is decremented accordingly. The calculation below is to determine
-    // the scaling for this accumulator.
-
-    IEU_per_Wh =
-        (long)JOULES_PER_WATT_HOUR * CYCLES_PER_SECOND * (1/powerCal_diverted);
-
-    // to avoid the diverted energy accumulator 'creeping' when the load is not active
-    antiCreepLimit_inIEUperMainsCycle = (float)ANTI_CREEP_LIMIT * (1/powerCal_grid);
-
     // Define operating limits for the LP filter which identifies DC offset in the voltage
     // sample stream.  By limiting the output range, the filter always should start up
     // correctly.
@@ -291,11 +265,6 @@ void setup()
 
     Serial.print ( "powerCal_grid =      ");
     Serial.println (powerCal_grid,4);
-    Serial.print ( "powerCal_diverted = ");
-    Serial.println (powerCal_diverted,4);
-
-    Serial.print ("Anti-creep limit (Joules / mains cycle) = ");
-    Serial.println (ANTI_CREEP_LIMIT);
 
     Serial.print ("zero-crossing persistence (sample sets) = ");
     Serial.println (PERSISTENCE_FOR_POLARITY_CHANGE);
@@ -330,16 +299,16 @@ void timerIsr(void)
 
     switch (sample_index) {
     case 0:
-        sampleV = ADC;                    // store the ADC value (this one is for Voltage)
-        ADMUX = 0x40 + currentSensor_grid; // set up the next conversion, which is for Diverted Current
+        sampleV = ADC;                    // store the ADC value (Voltage)
+        ADMUX = 0x40 + currentSensor_grid; // set up the next conversion, which is for Grid Current
         ADCSRA |= (1<<ADSC);              // start the ADC
         sample_index++;                   // jump to state 1
         sampleI_grid = sampleI_grid_raw;
         dataReady = true;                 // all three ADC values can now be processed
         break;
     case 1:
-        sampleI_grid_raw = ADC;               // store the ADC value (this one is for Grid Current)
-        ADMUX = 0x40 + voltageSensor;  // set up the next conversion, which is for Voltage
+        sampleI_grid_raw = ADC;           // store the ADC value (Grid Current)
+        ADMUX = 0x40 + voltageSensor;	  // set up the next conversion, which is for Voltage
         ADCSRA |= (1<<ADSC);              // start the ADC
         sample_index = 0;                 // back to state 0
         break;
@@ -383,7 +352,6 @@ void loop()
 void allGeneralProcessing()
 {
     static long sumP_grid;                              // for per-cycle summation of 'real power'
-    static long sumP_diverted;                              // for per-cycle summation of 'real power'
     static long cumVdeltasThisCycle_long;    // for the LPF which determines DC offset (voltage)
     static long lastSampleVminusDC_long;     //    for the phaseCal algorithm
     static byte timerForDisplayUpdate = 0;
@@ -422,7 +390,6 @@ void allGeneralProcessing()
                 // a 'long') is therefore (1/powerCal) times larger than the actual power in Watts.
 
                 long realPower_grid = sumP_grid / sampleSetsDuringThisMainsCycle; // proportional to Watts
-                long realPower_diverted = sumP_diverted / sampleSetsDuringThisMainsCycle; // proportional to Watts
 
                 // Next, the energy content of this power rating needs to be determined.  Energy is
                 // power multiplied by time, so the next step is normally to multiply the measured
@@ -438,7 +405,6 @@ void allGeneralProcessing()
                 // the actual energy in Joules.
 
                 long realEnergy_grid = realPower_grid;
-                long realEnergy_diverted = realPower_diverted;
 
 
                 // Energy contributions from the grid connection point (CT1) are summed in an
@@ -458,36 +424,10 @@ void allGeneralProcessing()
                 else if (energyInBucket_long < 0)
                     energyInBucket_long = 0;
 
-                if (EDD_isActive) { // Energy Diversion Display
-                    // For diverted energy, the latest contribution needs to be added to an
-                    // accumulator which operates with maximum precision.
-
-                    if (realEnergy_diverted < antiCreepLimit_inIEUperMainsCycle)
-                        realEnergy_diverted = 0;
-
-                    divertedEnergyRecent_IEU += realEnergy_diverted;
-
-                    // Whole kWhours are then recorded separately
-                    if (divertedEnergyRecent_IEU > IEU_per_Wh) {
-                        divertedEnergyRecent_IEU -= IEU_per_Wh;
-                        divertedEnergyTotal_Wh++;
-                    }
-                }
-
                 if (timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA) {
                     // the 4-digit display needs to be refreshed every few mS. For convenience,
                     // this action is performed every N times around this processing loop.
                     timerForDisplayUpdate = 0;
-
-                    // After a pre-defined period of inactivity, the 4-digit display needs to
-                    // close down in readiness for the next's day's data.
-                    //
-                    if (absenceOfDivertedEnergyCount > displayShutdown_inMainsCycles) {
-                        // clear the accumulators for diverted energy
-                        divertedEnergyTotal_Wh = 0;
-                        divertedEnergyRecent_IEU = 0;
-                        EDD_isActive = false; // energy diversion detector is now inactive
-                    }
                 } else
                     timerForDisplayUpdate++;
 
@@ -502,13 +442,11 @@ void allGeneralProcessing()
                 // clear the per-cycle accumulators for use in this new mains cycle.
                 sampleSetsDuringThisMainsCycle = 0;
                 sumP_grid = 0;
-                sumP_diverted = 0;
             } else {
                 // wait until the DC-blocking filters have had time to settle
                 if (millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000) {
                     beyondStartUpPhase = true;
                     sumP_grid = 0;
-                    sumP_diverted = 0;
                     sampleSetsDuringThisMainsCycle = 0; // not yet dealt with for this cycle
                     sampleCount_forContinuityChecker = 1; // opportunity has been missed for this cycle
                     lowestNoOfSampleSetsPerMainsCycle = 999;
@@ -532,14 +470,6 @@ void allGeneralProcessing()
 
                 // set the Arduino's output pin accordingly, and clear the flag
                 digitalWrite(outputForTrigger, nextStateOfLoad);
-
-                // update the Energy Diversion Detector
-                if (nextStateOfLoad == LOAD_ON) {
-                    absenceOfDivertedEnergyCount = 0;
-                    EDD_isActive = true;
-                } else {
-                    absenceOfDivertedEnergyCount++;
-                }
             }
         }
     } // end of processing that is specific to samples where the voltage is positive
@@ -584,21 +514,6 @@ void allGeneralProcessing()
     long instP = filtV_div4 * filtI_div4;  // 32-bits (now x4096, or 2^12)
     instP = instP>>12;     // scaling is now x1, as for Mk2 (V_ADC x I_ADC)
     sumP_grid +=instP; // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
-
-    // Now deal with the diverted power (as measured via CT2)
-    // remove most of the DC offset from the current sample (the precise value does not matter)
-    long sampleIminusDC_diverted = ((long)(sampleI_diverted-DCoffset_I))<<8;
-
-    // phase-shift the voltage waveform so that it aligns with the diverted current waveform
-    long phaseShiftedSampleVminusDC_diverted = sampleVminusDC_long; // <- simple version for when
-    // phaseCal is not in use
-
-    // calculate the "real power" in this sample pair and add to the accumulated sum
-    filtV_div4 = phaseShiftedSampleVminusDC_diverted>>2;  // reduce to 16-bits (now x64, or 2^6)
-    filtI_div4 = sampleIminusDC_diverted>>2; // reduce to 16-bits (now x64, or 2^6)
-    instP = filtV_div4 * filtI_div4;  // 32-bits (now x4096, or 2^12)
-    instP = instP>>12;     // scaling is now x1, as for Mk2 (V_ADC x I_ADC)
-    sumP_diverted +=instP; // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
 
     sampleSetsDuringThisMainsCycle++;
 
