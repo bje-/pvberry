@@ -109,10 +109,8 @@ long upperEnergyThreshold_long;    // for turning load on
 long DCoffset_V_long;              // <--- for LPF
 long DCoffset_V_min;               // <--- for LPF
 long DCoffset_V_max;               // <--- for LPF
-long IEU_per_Wh; // depends on powerCal, frequency & the 'sweetzone' size.
 
 long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_MINUTE * MINUTES_PER_HOUR;
-unsigned long displayShutdown_inMainsCycles = 8 * mainsCyclesPerHour;
 
 // this setting is only used if anti-flicker mode is enabled
 float offsetOfEnergyThresholdsInAFmode = 0.1; // <-- must not exceeed 0.5
@@ -354,7 +352,6 @@ void allGeneralProcessing()
     static long sumP_grid;                   // for per-cycle summation of 'real power'
     static long cumVdeltasThisCycle_long;    // for the LPF which determines DC offset (voltage)
     static long lastSampleVminusDC_long;     //    for the phaseCal algorithm
-    static byte timerForDisplayUpdate = 0;
     static enum loadStates nextStateOfLoad = LOAD_OFF;
 
     // remove DC offset from the raw voltage sample by subtracting the accurate value
@@ -422,13 +419,6 @@ void allGeneralProcessing()
                     energyInBucket_long = capacityOfEnergyBucket_long;
                 else if (energyInBucket_long < 0)
                     energyInBucket_long = 0;
-
-                if (timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA) {
-                    // the 4-digit display needs to be refreshed every few mS. For convenience,
-                    // this action is performed every N times around this processing loop.
-                    timerForDisplayUpdate = 0;
-                } else
-                    timerForDisplayUpdate++;
 
                 // continuity checker
                 sampleCount_forContinuityChecker++;
@@ -545,13 +535,11 @@ void confirmPolarity()
 void configureParamsForSelectedOutputMode()
 {
     if (outputMode == ANTI_FLICKER) {
-        // settings for anti-flicker mode
         lowerEnergyThreshold_long =
             capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
         upperEnergyThreshold_long =
             capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
     } else {
-        // settings for normal mode
         lowerEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;
         upperEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;
     }
