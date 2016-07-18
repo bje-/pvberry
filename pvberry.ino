@@ -277,8 +277,7 @@ void setup()
     Serial.print ( "Output mode:    ");
     if (outputMode == NORMAL)
         Serial.println ( "normal");
-    else
-    {
+    else {
         Serial.println ( "anti-flicker");
         Serial.print ( "  offsetOfEnergyThresholds  = ");
         Serial.println ( offsetOfEnergyThresholdsInAFmode);
@@ -329,8 +328,7 @@ void timerIsr(void)
     static int sampleI_diverted_raw;
 
 
-    switch(sample_index)
-    {
+    switch(sample_index) {
     case 0:
         sampleV = ADC;                    // store the ADC value (this one is for Voltage)
         ADMUX = 0x40 + currentSensor_diverted;  // set up the next conversion, which is for Diverted Current
@@ -376,8 +374,7 @@ void timerIsr(void)
 
 void loop()
 {
-    if (dataReady)   // flag is set after every set of ADC conversions
-    {
+    if (dataReady) { // flag is set after every set of ADC conversions
         dataReady = false; // reset the flag
         allGeneralProcessing(); // executed once for each set of V&I samples
     }
@@ -405,19 +402,15 @@ void allGeneralProcessing()
     // determine the polarity of the latest voltage sample
     if (sampleVminusDC_long > 0) {
         polarityOfMostRecentVsample = POSITIVE;
-    }
-    else {
+    } else {
         polarityOfMostRecentVsample = NEGATIVE;
     }
     confirmPolarity();
 
-    if (polarityConfirmed == POSITIVE)
-    {
-        if (polarityConfirmedOfLastSampleV != POSITIVE)
-        {
+    if (polarityConfirmed == POSITIVE) {
+        if (polarityConfirmedOfLastSampleV != POSITIVE) {
             // This is the start of a new +ve half cycle (just after the zero-crossing point)
-            if (beyondStartUpPhase)
-            {
+            if (beyondStartUpPhase) {
                 // a simple routine for checking the performance of this new ISR structure
                 if (sampleSetsDuringThisMainsCycle < lowestNoOfSampleSetsPerMainsCycle)
                     lowestNoOfSampleSetsPerMainsCycle = sampleSetsDuringThisMainsCycle;
@@ -471,8 +464,7 @@ void allGeneralProcessing()
                 else if (energyInBucket_long < 0)
                     energyInBucket_long = 0;
 
-                if (EDD_isActive) // Energy Diversion Display
-                {
+                if (EDD_isActive) { // Energy Diversion Display
                     // For diverted energy, the latest contribution needs to be added to an
                     // accumulator which operates with maximum precision.
 
@@ -482,36 +474,32 @@ void allGeneralProcessing()
                     divertedEnergyRecent_IEU += realEnergy_diverted;
 
                     // Whole kWhours are then recorded separately
-                    if (divertedEnergyRecent_IEU > IEU_per_Wh)
-                    {
+                    if (divertedEnergyRecent_IEU > IEU_per_Wh) {
                         divertedEnergyRecent_IEU -= IEU_per_Wh;
                         divertedEnergyTotal_Wh++;
                     }
                 }
 
-                if (timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA)
-                {   // the 4-digit display needs to be refreshed every few mS. For convenience,
+                if (timerForDisplayUpdate > UPDATE_PERIOD_FOR_DISPLAYED_DATA) {
+                    // the 4-digit display needs to be refreshed every few mS. For convenience,
                     // this action is performed every N times around this processing loop.
                     timerForDisplayUpdate = 0;
 
                     // After a pre-defined period of inactivity, the 4-digit display needs to
                     // close down in readiness for the next's day's data.
                     //
-                    if (absenceOfDivertedEnergyCount > displayShutdown_inMainsCycles)
-                    {
+                    if (absenceOfDivertedEnergyCount > displayShutdown_inMainsCycles) {
                         // clear the accumulators for diverted energy
                         divertedEnergyTotal_Wh = 0;
                         divertedEnergyRecent_IEU = 0;
                         EDD_isActive = false; // energy diversion detector is now inactive
                     }
-                }
-                else
+                } else
                     timerForDisplayUpdate++;
 
                 // continuity checker
                 sampleCount_forContinuityChecker++;
-                if (sampleCount_forContinuityChecker >= CONTINUITY_CHECK_MAXCOUNT)
-                {
+                if (sampleCount_forContinuityChecker >= CONTINUITY_CHECK_MAXCOUNT) {
                     sampleCount_forContinuityChecker = 0;
                     Serial.println(lowestNoOfSampleSetsPerMainsCycle);
                     lowestNoOfSampleSetsPerMainsCycle = 999;
@@ -521,12 +509,9 @@ void allGeneralProcessing()
                 sampleSetsDuringThisMainsCycle = 0;
                 sumP_grid = 0;
                 sumP_diverted = 0;
-            }
-            else
-            {
+            } else {
                 // wait until the DC-blocking filters have had time to settle
-                if (millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000)
-                {
+                if (millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000) {
                     beyondStartUpPhase = true;
                     sumP_grid = 0;
                     sumP_diverted = 0;
@@ -540,15 +525,12 @@ void allGeneralProcessing()
 
         // still processing samples where the voltage is POSITIVE ...
         // check to see whether the trigger device can now be reliably armed
-        if (sampleSetsDuringThisMainsCycle == 3) // much easier than checking the voltage level
-        {
-            if (beyondStartUpPhase)
-            {
+        if (sampleSetsDuringThisMainsCycle == 3) { // much easier than checking the voltage level
+            if (beyondStartUpPhase) {
                 if (energyInBucket_long < lowerEnergyThreshold_long) {
                     // when below the lower threshold, always set the load to "off"
                     nextStateOfLoad = LOAD_OFF;
-                }
-                else if (energyInBucket_long > upperEnergyThreshold_long) {
+                } else if (energyInBucket_long > upperEnergyThreshold_long) {
                     // when above the upper threshold, always set the load to "off"
                     nextStateOfLoad = LOAD_ON;
                 }
@@ -561,18 +543,15 @@ void allGeneralProcessing()
                 if (nextStateOfLoad == LOAD_ON) {
                     absenceOfDivertedEnergyCount = 0;
                     EDD_isActive = true;
-                }
-                else {
+                } else {
                     absenceOfDivertedEnergyCount++;
                 }
             }
         }
     } // end of processing that is specific to samples where the voltage is positive
 
-    else // the polatity of this sample is negative
-    {
-        if (polarityConfirmedOfLastSampleV != NEGATIVE)
-        {
+    else { // the polatity of this sample is negative
+        if (polarityConfirmedOfLastSampleV != NEGATIVE) {
             // This is the start of a new -ve half cycle (just after the zero-crossing point)
             // which is a convenient point to update the Low Pass Filter for DC-offset removal
             //  The portion which is fed back into the integrator is approximately one percent
@@ -648,8 +627,7 @@ void confirmPolarity()
     else
         count = 0;
 
-    if (count > PERSISTENCE_FOR_POLARITY_CHANGE)
-    {
+    if (count > PERSISTENCE_FOR_POLARITY_CHANGE) {
         count = 0;
         polarityConfirmed = polarityOfMostRecentVsample;
     }
@@ -658,16 +636,13 @@ void confirmPolarity()
 
 void configureParamsForSelectedOutputMode()
 {
-    if (outputMode == ANTI_FLICKER)
-    {
+    if (outputMode == ANTI_FLICKER) {
         // settings for anti-flicker mode
         lowerEnergyThreshold_long =
             capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
         upperEnergyThreshold_long =
             capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
-    }
-    else
-    {
+    } else {
         // settings for normal mode
         lowerEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;
         upperEnergyThreshold_long = capacityOfEnergyBucket_long * 0.5;
