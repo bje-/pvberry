@@ -1,9 +1,5 @@
 /*
- * This sketch is for diverting suplus PV power to a dump load using a triac or
- * Solid State Relay. It is based on the Mk2i PV Router code that I have posted in on
- * the OpenEnergyMonitor forum.  The original version, and other related material,
- * can be found on my Summary Page at www.openenergymonitor.org/emon/node/1757
- *
+ * Divert suplus PV power to a dump load using a triac.
  * Based on code by Robin Emley.
  */
 
@@ -43,7 +39,7 @@ enum outputModes outputMode;
 
 const byte outputForTrigger = 4;       // <-- an output which is active-low
 const byte voltageSensor = 3;          // A3 is for the voltage sensor
-const byte currentSensor = 5;          // A5 is for CT1 which measures grid current
+const byte currentSensor = 4;          // A4 is for CT measuring grid current
 
 const byte delayBeforeSerialStarts = 3;  // in seconds, to allow Serial window to be opened
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
