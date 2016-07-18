@@ -59,13 +59,13 @@ volatile int sampleI;
 volatile int sampleV;
 
 // For an enhanced polarity detection mechanism, which includes a persistence check
-#define PERSISTENCE_FOR_POLARITY_CHANGE 1 // sample sets
+const int PERSISTENCE_FOR_POLARITY_CHANGE = 1; // sample sets
 enum polarities polarityOfMostRecentVsample;
 enum polarities polarityConfirmed;
 enum polarities polarityConfirmedOfLastSampleV;
 
 // For a mechanism to check the continuity of the sampling sequence
-#define CONTINUITY_CHECK_MAXCOUNT 250 // mains cycles
+const int CONTINUITY_CHECK_MAXCOUNT = 250; // mains cycles
 int sampleCount_forContinuityChecker;
 int sampleSetsDuringThisMainsCycle;
 int lowestNoOfSampleSetsPerMainsCycle;
