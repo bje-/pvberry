@@ -7,6 +7,7 @@
  * Based on code by Robin Emley.
  */
 
+#include <avr/wdt.h>
 #include <Arduino.h>
 #include <TimerOne.h>
 #include <myassert.h>
@@ -87,6 +88,10 @@ const float powerCal = 0.0435;
 
 void setup()
 {
+#if 0
+    wdt_enable(WDTO_8S);
+#endif
+
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF); // the external trigger is active low
 
@@ -188,6 +193,9 @@ void timerIsr(void)
 
 void loop()
 {
+#if 0
+    wdt_reset();  // poke the watchdog
+#endif
     if (dataReady) {
         // flag is set after every set of ADC conversions
         dataReady = false;
