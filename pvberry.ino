@@ -119,7 +119,7 @@ float offsetOfEnergyThresholdsInAFmode = 0.1; // <-- must not exceeed 0.5
 
 // for interaction between the main processor and the ISRs
 volatile boolean dataReady = false;
-volatile int sampleI_grid;
+volatile int sampleI;
 volatile int sampleV;
 
 // For an enhanced polarity detection mechanism, which includes a persistence check
@@ -295,7 +295,7 @@ void setup()
 void timerIsr(void)
 {
     static unsigned char sample_index = 0;
-    static int  sampleI_grid_raw;
+    static int  sampleI_raw;
 
     switch (sample_index) {
     case 0:
@@ -303,11 +303,11 @@ void timerIsr(void)
         ADMUX = 0x40 + currentSensor_grid; // set up the next conversion, which is for Grid Current
         ADCSRA |= (1<<ADSC);              // start the ADC
         sample_index++;                   // jump to state 1
-        sampleI_grid = sampleI_grid_raw;
+        sampleI = sampleI_raw;
         dataReady = true;                 // all three ADC values can now be processed
         break;
     case 1:
-        sampleI_grid_raw = ADC;           // store the ADC value (Grid Current)
+        sampleI_raw = ADC;           // store the ADC value (Grid Current)
         ADMUX = 0x40 + voltageSensor;	  // set up the next conversion, which is for Voltage
         ADCSRA |= (1<<ADSC);              // start the ADC
         sample_index = 0;                 // back to state 0
@@ -351,7 +351,7 @@ void loop()
 
 void allGeneralProcessing()
 {
-    static long sumP_grid;                              // for per-cycle summation of 'real power'
+    static long sumP_grid;                   // for per-cycle summation of 'real power'
     static long cumVdeltasThisCycle_long;    // for the LPF which determines DC offset (voltage)
     static long lastSampleVminusDC_long;     //    for the phaseCal algorithm
     static byte timerForDisplayUpdate = 0;
@@ -405,7 +405,6 @@ void allGeneralProcessing()
                 // the actual energy in Joules.
 
                 long realEnergy_grid = realPower_grid;
-
 
                 // Energy contributions from the grid connection point (CT1) are summed in an
                 // accumulator which is known as the energy bucket.  The purpose of the energy bucket
@@ -501,7 +500,7 @@ void allGeneralProcessing()
     //
     // First, deal with the power at the grid connection point (as measured via CT1)
     // remove most of the DC offset from the current sample (the precise value does not matter)
-    long sampleIminusDC_grid = ((long)(sampleI_grid-DCoffset_I))<<8;
+    long sampleIminusDC_grid = ((long)(sampleI-DCoffset_I))<<8;
 
     // phase-shift the voltage waveform so that it aligns with the grid current waveform
     long  phaseShiftedSampleVminusDC_grid = sampleVminusDC_long; // <- simple version for when
