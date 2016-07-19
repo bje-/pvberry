@@ -318,6 +318,21 @@ void allGeneralProcessing()
             else if (DCoffset_V_long > DCoffset_V_max)
                 DCoffset_V_long = DCoffset_V_max;
         }
+	// note the current state of the load for this cycle
+	boolbuf.insert(nextStateOfLoad == LOAD_ON);
+
+	// count # of cycles in the last 100 that the load was on
+	int oncycles = boolbuf.count();
+	for (int i = 8; i < 12; i++) {
+	  digitalWrite(i, LOW);
+	if (oncycles > 75)
+	  digitalWrite(8, HIGH);
+	if (oncycles > 50)
+	  digitalWrite(9, HIGH);
+	if (oncycles > 25)
+	  digitalWrite(10, HIGH);
+	if (oncycles > 0)
+	  digitalWrite(11, HIGH);
     }
 
 
