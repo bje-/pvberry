@@ -36,17 +36,19 @@ const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
 const int DCoffset_I = 512;    // nominal mid-point value of ADC @ x1 scale
 
 // General global variables that are used in multiple blocks so cannot be static.
-// For integer maths, many variables need to be 'long'
+// For integer maths, many variables need to be longs.
 
-boolean beyondStartUpPhase = false;     // start-up delay, allows things to settle
-long triggerThreshold_long;        // for determining when the trigger may be safely armed
-long energyInBucket_long;          // in Integer Energy Units
-long capacityOfEnergyBucket_long;  // depends on powerCal, frequency & the 'sweetzone' size.
-long lowerEnergyThreshold_long;    // for turning load off
-long upperEnergyThreshold_long;    // for turning load on
-long DCoffset_V_long;              // <--- for LPF
-long DCoffset_V_min;               // <--- for LPF
-long DCoffset_V_max;               // <--- for LPF
+boolean beyondStartUpPhase = false; // start-up delay, allows things to settle
+long energyInBucket_long;           // in Integer Energy Units (IEU)
+long capacityOfEnergyBucket_long;   // depends on powerCal, frequency & the 'sweetzone' size.
+
+long lowerEnergyThreshold_long;     // for turning load off
+long upperEnergyThreshold_long;     // for turning load on
+
+// for low-pass filter
+long DCoffset_V_long;
+long DCoffset_V_min;
+long DCoffset_V_max;
 
 long mainsCyclesPerHour = (long) CYCLES_PER_SECOND * SECONDS_PER_HOUR;
 
@@ -65,7 +67,8 @@ enum polarities polarityConfirmed;
 enum polarities polarityConfirmedOfLastSampleV;
 
 // For a mechanism to check the continuity of the sampling sequence
-const int CONTINUITY_CHECK_MAXCOUNT = 250; // mains cycles
+// (maxcount is in mains cycles)
+const int CONTINUITY_CHECK_MAXCOUNT = 250;
 int sampleCount_forContinuityChecker;
 int sampleSetsDuringThisMainsCycle;
 int lowestNoOfSampleSetsPerMainsCycle;
@@ -178,6 +181,7 @@ void allGeneralProcessing()
 {
     static long sumP;                   // for per-cycle summation of 'real power'
     static long cumVdeltasThisCycle_long;    // for the LPF which determines DC offset (voltage)
+    static enum loadStates nextStateOfLoad = LOAD_OFF;
 
     // remove DC offset from the raw voltage sample by subtracting the accurate value
     // as determined by a LP filter.
@@ -269,8 +273,6 @@ void allGeneralProcessing()
         // check to see whether the trigger device can now be reliably armed
         if (sampleSetsDuringThisMainsCycle == 3) { // much easier than checking the voltage level
             if (beyondStartUpPhase) {
-	        static enum loadStates nextStateOfLoad = LOAD_OFF;
-
                 if (energyInBucket_long < lowerEnergyThreshold_long) {
                     // when below the lower threshold, always set the load to "off"
                     nextStateOfLoad = LOAD_OFF;
