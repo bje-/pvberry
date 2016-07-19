@@ -40,7 +40,6 @@ const byte outputForTrigger = 4;
 const byte voltageSensor = 3;          // A3 is for the voltage sensor
 const byte currentSensor = 4;          // A4 is for CT measuring grid current
 
-const byte delayBeforeSerialStarts = 3;  // in seconds, to allow Serial window to be opened
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
 const int DCoffset_I = 512;    // nominal mid-point value of ADC @ x1 scale
 
@@ -133,8 +132,6 @@ void setup()
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF);
 
-    // allow time to open Serial monitor
-    delay(delayBeforeSerialStarts * 1000);
     Serial.begin(9600);
     Serial.println("Welcome to the PVBerry!");
     Serial.println();
@@ -270,9 +267,9 @@ void allGeneralProcessing()
                 sumP = 0;
             } else {
                 // wait until the DC-blocking filters have had time to settle
-	        // nb. This call to millis() can only occur only during
-  	        // the start-up phase, so will never rollover.
-                if (millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000) {
+                // nb. This call to millis() can only occur only during
+                // the start-up phase, so will never rollover.
+                if (millis() > startUpPeriod * 1000) {
                     beyondStartUpPhase = true;
                     sumP = 0;
                     sampleSetsDuringThisMainsCycle = 0; // not yet dealt with for this cycle
