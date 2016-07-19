@@ -85,11 +85,45 @@ int lowestNoOfSampleSetsPerMainsCycle;
 // calibration factor
 const float powerCal = 0.091;
 
+// A data type that holds 100 bools in a circular fashion.
+
+class BoolBuffer {
+public:
+  BoolBuffer(void) { index = 0; }
+
+  void insert(uint8_t item) {
+    if (index >= 100)
+      index = 0;
+    buf[index] = item;
+    index++;
+  }
+
+  int count() {
+    int result = 0;
+    for (int i = 0; i < 100; i++)
+      if (buf[i])
+	result++;
+    return result;
+  }
+
+private:
+  bool buf[100];
+  unsigned int index;
+} boolbuf;
+
 void setup()
 {
 #if 0
     wdt_enable(WDTO_8S);
 #endif
+
+    for (int pinNo = 8; pinNo < 12; pinNo++) {
+      pinMode(pinNo, OUTPUT);
+      digitalWrite(pinNo, HIGH);
+      delay(250);
+    }
+    for (int i = 8; i < 12; i++)
+      digitalWrite(i, LOW);
 
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF);
