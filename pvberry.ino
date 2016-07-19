@@ -70,7 +70,8 @@ int sampleCount_forContinuityChecker;
 int sampleSetsDuringThisMainsCycle;
 int lowestNoOfSampleSetsPerMainsCycle;
 
-const float powerCal = 0.0435;
+// calibration factor
+const float powerCal = 0.091;
 
 void setup()
 {
