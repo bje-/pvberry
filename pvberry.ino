@@ -177,7 +177,6 @@ void allGeneralProcessing()
 {
     static long sumP;                   // for per-cycle summation of 'real power'
     static long cumVdeltasThisCycle_long;    // for the LPF which determines DC offset (voltage)
-    static enum loadStates nextStateOfLoad = LOAD_OFF;
 
     // remove DC offset from the raw voltage sample by subtracting the accurate value
     // as determined by a LP filter.
@@ -188,7 +187,7 @@ void allGeneralProcessing()
     confirmPolarity();
 
     if (polarityConfirmed == POSITIVE) {
-        if (polarityConfirmedOfLastSampleV != POSITIVE) {
+        if (polarityConfirmedOfLastSampleV == NEGATIVE) {
             // This is the start of a new +ve half cycle (just after the zero-crossing point)
             if (beyondStartUpPhase) {
                 // a simple routine for checking the performance of this new ISR structure
@@ -219,9 +218,9 @@ void allGeneralProcessing()
                 // CYCLES_PER_SECOND greater than it would otherwise be.
                 //   Although the numerical value itself does not change, I thought that a new name
                 // may be helpful so as to minimise confusion.
-                //   The 'energy' variable below is CYCLES_PER_SECOND * (1/powerCal) times larger than
-                // the actual energy in Joules.
 
+                // The 'realEnergy' variable below is CYCLES_PER_SECOND * (1/powerCal) times larger
+		// than the actual energy in Joules.
                 long realEnergy = realPower;
 
                 // Energy contributions from the grid connection point (CT1) are summed in an
@@ -269,6 +268,8 @@ void allGeneralProcessing()
         // check to see whether the trigger device can now be reliably armed
         if (sampleSetsDuringThisMainsCycle == 3) { // much easier than checking the voltage level
             if (beyondStartUpPhase) {
+	        static enum loadStates nextStateOfLoad = LOAD_OFF;
+
                 if (energyInBucket_long < lowerEnergyThreshold_long) {
                     // when below the lower threshold, always set the load to "off"
                     nextStateOfLoad = LOAD_OFF;
@@ -282,39 +283,40 @@ void allGeneralProcessing()
                 digitalWrite(outputForTrigger, nextStateOfLoad);
             }
         }
-    } // end of processing that is specific to samples where the voltage is positive
-
-    else { // the polatity of this sample is negative
-        if (polarityConfirmedOfLastSampleV != NEGATIVE) {
+    }
+    else {
+        // processing that is specific to the first Vsample in each -ve half cycle
+        // the polarity of this sample is negative
+        if (polarityConfirmedOfLastSampleV == POSITIVE) {
             // This is the start of a new -ve half cycle (just after the zero-crossing point)
-            // which is a convenient point to update the Low Pass Filter for DC-offset removal
-            //  The portion which is fed back into the integrator is approximately one percent
+            // which is a convenient point to update the Low Pass Filter for DC-offset removal.
+            // The portion which is fed back into the integrator is approximately one percent
             // of the average offset of all the Vsamples in the previous mains cycle.
-            //
             long previousOffset = DCoffset_V_long;
             DCoffset_V_long = previousOffset + (cumVdeltasThisCycle_long>>12);
             cumVdeltasThisCycle_long = 0;
 
-            // To ensure that the LPF will always start up correctly when 240V AC is available, its
-            // output value needs to be prevented from drifting beyond the likely range of the
-            // voltage signal.  This avoids the need to use a HPF as was done for initial Mk2 builds.
-            //
-            if (DCoffset_V_long < DCoffset_V_min)
+            // To ensure that the LPF will always start up correctly
+            // when 240V AC is available, its output value needs to be
+            // prevented from drifting beyond the likely range of the
+            // voltage signal.  This avoids the need to use a HPF as
+            // was done for initial Mk2 builds.
+	    if (DCoffset_V_long < DCoffset_V_min)
                 DCoffset_V_long = DCoffset_V_min;
             else if (DCoffset_V_long > DCoffset_V_max)
                 DCoffset_V_long = DCoffset_V_max;
+        }
+    }
 
-        } // end of processing that is specific to the first Vsample in each -ve half cycle
-    } // end of processing that is specific to samples where the voltage is negative
 
-    // processing for EVERY set of samples
-    //
-    // First, deal with the power at the grid connection point (as measured via CT1)
+    // processing for EVERY set of I, V samples
+
+    // First, deal with the power at the grid connection point (as measured via the CT)
     // remove most of the DC offset from the current sample (the precise value does not matter)
     long sampleIminusDC = ((long) (sampleI - DCoffset_I)) << 8;
 
     // phase-shift the voltage waveform so that it aligns with the grid current waveform
-    long phaseShiftedSampleVminusDC = sampleVminusDC_long; // <- simple version for when
+    long phaseShiftedSampleVminusDC = sampleVminusDC_long;
 
     // calculate the "real power" in this sample pair and add to the accumulated sum
     long filtV_div4 = phaseShiftedSampleVminusDC >> 2;  // reduce to 16-bits (now x64, or 2^6)
