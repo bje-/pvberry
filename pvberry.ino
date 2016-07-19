@@ -89,26 +89,31 @@ const float powerCal = 0.091;
 
 class BoolBuffer {
 public:
-  BoolBuffer(void) { index = 0; }
+    BoolBuffer(void)
+    {
+        index = 0;
+    }
 
-  void insert(uint8_t item) {
-    if (index >= 100)
-      index = 0;
-    buf[index] = item;
-    index++;
-  }
+    void insert(bool item)
+    {
+        if (index >= 100)
+            index = 0;
+        buf[index] = item;
+        index++;
+    }
 
-  int count() {
-    int result = 0;
-    for (int i = 0; i < 100; i++)
-      if (buf[i])
-	result++;
-    return result;
-  }
+    int count()
+    {
+        int result = 0;
+        for (int i = 0; i < 100; i++)
+            if (buf[i])
+                result++;
+        return result;
+    }
 
 private:
-  bool buf[100];
-  unsigned int index;
+    bool buf[100];
+    unsigned int index;
 } boolbuf;
 
 void setup()
@@ -118,12 +123,12 @@ void setup()
 #endif
 
     for (int pinNo = 8; pinNo < 12; pinNo++) {
-      pinMode(pinNo, OUTPUT);
-      digitalWrite(pinNo, HIGH);
-      delay(250);
+        pinMode(pinNo, OUTPUT);
+        digitalWrite(pinNo, HIGH);
+        delay(250);
     }
     for (int i = 8; i < 12; i++)
-      digitalWrite(i, LOW);
+        digitalWrite(i, LOW);
 
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF);
@@ -170,9 +175,9 @@ void setup()
     Timer1.attachInterrupt(timerIsr);
 
     lowerEnergyThreshold_long =
-	capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
+        capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
     upperEnergyThreshold_long =
-	capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
+        capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
 }
 
 
@@ -256,7 +261,7 @@ void allGeneralProcessing()
                 sampleCount_forContinuityChecker++;
                 if (sampleCount_forContinuityChecker >= CONTINUITY_CHECK_MAXCOUNT) {
                     sampleCount_forContinuityChecker = 0;
-		    // Serial.println(lowestNoOfSampleSetsPerMainsCycle);
+                    // Serial.println(lowestNoOfSampleSetsPerMainsCycle);
                     lowestNoOfSampleSetsPerMainsCycle = 999;
                 }
 
@@ -295,8 +300,7 @@ void allGeneralProcessing()
                 digitalWrite(outputForTrigger, nextStateOfLoad);
             }
         }
-    }
-    else {
+    } else {
         // processing that is specific to the first Vsample in each -ve half cycle
         // the polarity of this sample is negative
         if (polarityConfirmedOfLastSampleV == POSITIVE) {
@@ -313,50 +317,51 @@ void allGeneralProcessing()
             // prevented from drifting beyond the likely range of the
             // voltage signal.  This avoids the need to use a HPF as
             // was done for initial Mk2 builds.
-	    if (DCoffset_V_long < DCoffset_V_min)
+            if (DCoffset_V_long < DCoffset_V_min)
                 DCoffset_V_long = DCoffset_V_min;
             else if (DCoffset_V_long > DCoffset_V_max)
                 DCoffset_V_long = DCoffset_V_max;
         }
-	// note the current state of the load for this cycle
-	boolbuf.insert(nextStateOfLoad == LOAD_ON);
+        // note the current state of the load for this cycle
+        boolbuf.insert(nextStateOfLoad == LOAD_ON);
 
-	// count # of cycles in the last 100 that the load was on
-	int oncycles = boolbuf.count();
-	for (int i = 8; i < 12; i++) {
-	  digitalWrite(i, LOW);
-	if (oncycles > 75)
-	  digitalWrite(8, HIGH);
-	if (oncycles > 50)
-	  digitalWrite(9, HIGH);
-	if (oncycles > 25)
-	  digitalWrite(10, HIGH);
-	if (oncycles > 0)
-	  digitalWrite(11, HIGH);
+        // count # of cycles in the last 100 that the load was on
+        int oncycles = boolbuf.count();
+        for (int i = 8; i < 12; i++)
+            digitalWrite(i, LOW);
+
+        if (oncycles > 75)
+            digitalWrite(8, HIGH);
+        if (oncycles > 50)
+            digitalWrite(9, HIGH);
+        if (oncycles > 25)
+            digitalWrite(10, HIGH);
+        if (oncycles > 0)
+            digitalWrite(11, HIGH);
+
+
+        // processing for EVERY set of I, V samples
+
+        // First, deal with the power at the grid connection point (as measured via the CT)
+        // remove most of the DC offset from the current sample (the precise value does not matter)
+        long sampleIminusDC = ((long) (sampleI - DCoffset_I)) << 8;
+
+        // phase-shift the voltage waveform so that it aligns with the grid current waveform
+        long phaseShiftedSampleVminusDC = sampleVminusDC_long;
+
+        // calculate the "real power" in this sample pair and add to the accumulated sum
+        long filtV_div4 = phaseShiftedSampleVminusDC >> 2;  // reduce to 16-bits (now x64, or 2^6)
+        long filtI_div4 = sampleIminusDC >> 2; // reduce to 16-bits (now x64, or 2^6)
+        long instP = filtV_div4 * filtI_div4;  // 32-bits (now x4096, or 2^12)
+        instP = instP >> 12;                   // scaling is now x1, as for Mk2 (V_ADC x I_ADC)
+        sumP += instP;                         // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
+
+        sampleSetsDuringThisMainsCycle++;
+
+        // store items for use during next loop
+        cumVdeltasThisCycle_long += sampleVminusDC_long; // for use with LP filter
+        polarityConfirmedOfLastSampleV = polarityConfirmed;  // for identification of half cycle boundaries
     }
-
-
-    // processing for EVERY set of I, V samples
-
-    // First, deal with the power at the grid connection point (as measured via the CT)
-    // remove most of the DC offset from the current sample (the precise value does not matter)
-    long sampleIminusDC = ((long) (sampleI - DCoffset_I)) << 8;
-
-    // phase-shift the voltage waveform so that it aligns with the grid current waveform
-    long phaseShiftedSampleVminusDC = sampleVminusDC_long;
-
-    // calculate the "real power" in this sample pair and add to the accumulated sum
-    long filtV_div4 = phaseShiftedSampleVminusDC >> 2;  // reduce to 16-bits (now x64, or 2^6)
-    long filtI_div4 = sampleIminusDC >> 2; // reduce to 16-bits (now x64, or 2^6)
-    long instP = filtV_div4 * filtI_div4;  // 32-bits (now x4096, or 2^12)
-    instP = instP >> 12;                   // scaling is now x1, as for Mk2 (V_ADC x I_ADC)
-    sumP += instP;                         // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
-
-    sampleSetsDuringThisMainsCycle++;
-
-    // store items for use during next loop
-    cumVdeltasThisCycle_long += sampleVminusDC_long; // for use with LP filter
-    polarityConfirmedOfLastSampleV = polarityConfirmed;  // for identification of half cycle boundaries
 }
 
 
