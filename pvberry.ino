@@ -258,6 +258,8 @@ void allGeneralProcessing()
                 sumP = 0;
             } else {
                 // wait until the DC-blocking filters have had time to settle
+	        // nb. This call to millis() can only occur only during
+  	        // the start-up phase, so will never rollover.
                 if (millis() > (delayBeforeSerialStarts + startUpPeriod) * 1000) {
                     beyondStartUpPhase = true;
                     sumP = 0;
