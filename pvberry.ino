@@ -112,10 +112,6 @@ void setup()
     DCoffset_V_min = (long)(512L - 100) * 256; // mid-point of ADC minus a working margin
     DCoffset_V_max = (long)(512L + 100) * 256; // mid-point of ADC plus a working margin
 
-    Serial.print("ADC mode:       ");
-    Serial.print(ADC_TIMER_PERIOD);
-    Serial.println( " uS fixed timer");
-
     // Set up the ADC to be triggered by a hardware timer of fixed duration
     ADCSRA  = (1<<ADPS0)+(1<<ADPS1)+(1<<ADPS2);  // Set the ADC's clock to system clock / 128
     ADCSRA |= (1 << ADEN);                 // Enable ADC
