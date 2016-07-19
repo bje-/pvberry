@@ -142,17 +142,17 @@ void timerIsr(void)
     switch (state) {
     case 0:
         sampleV = ADC;                    // store the voltage
-        ADMUX = 0x40 + currentSensor;     // set up the next conversion (current)
-        ADCSRA |= (1<<ADSC);              // start the ADC
-        state = 1;                        // jump to state 1
+        ADMUX = 0x40 + currentSensor;     // switch ADC channel
+        ADCSRA |= (1<<ADSC);              // start a conversion
+        state = 1;
         sampleI = sampleI_raw;
-        dataReady = true;                 // all three ADC values can now be processed
+        dataReady = true;                 // both ADC values can now be processed
         break;
     case 1:
         sampleI_raw = ADC;                // store the current
-        ADMUX = 0x40 + voltageSensor;	  // set up the next conversion (voltage)
-        ADCSRA |= (1<<ADSC);              // start the ADC
-        state = 0;                        // back to state 0
+        ADMUX = 0x40 + voltageSensor;	  // switch ADC channel
+        ADCSRA |= (1<<ADSC);              // start a conversion
+        state = 0;
         break;
     default:
         unreachable();
