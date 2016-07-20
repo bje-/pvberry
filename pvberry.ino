@@ -36,7 +36,7 @@ void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
 
-const byte outputForTrigger = 4;
+const byte outputForTrigger = 3;
 const byte voltageSensor = 3;          // A3 is for the voltage sensor
 const byte currentSensor = 4;          // A4 is for CT measuring grid current
 
@@ -121,12 +121,12 @@ void setup()
     wdt_enable(WDTO_8S);
 #endif
 
-    for (int pinNo = 8; pinNo < 12; pinNo++) {
+    for (int pinNo = 4; pinNo < 8; pinNo++) {
         pinMode(pinNo, OUTPUT);
         digitalWrite(pinNo, HIGH);
         delay(250);
     }
-    for (int i = 8; i < 12; i++)
+    for (int i = 4; i < 8; i++)
         digitalWrite(i, LOW);
 
     pinMode(outputForTrigger, OUTPUT);
@@ -324,17 +324,17 @@ void allGeneralProcessing()
 
         // count # of cycles in the last 100 that the load was on
         int oncycles = boolbuf.count();
-        for (int i = 8; i < 12; i++)
+        for (int i = 4; i < 8; i++)
             digitalWrite(i, LOW);
 
         if (oncycles > 75)
-            digitalWrite(8, HIGH);
+            digitalWrite(4, HIGH);
         if (oncycles > 50)
-            digitalWrite(9, HIGH);
+            digitalWrite(5, HIGH);
         if (oncycles > 25)
-            digitalWrite(10, HIGH);
+            digitalWrite(6, HIGH);
         if (oncycles > 0)
-            digitalWrite(11, HIGH);
+            digitalWrite(7, HIGH);
 
 
         // processing for EVERY set of I, V samples
