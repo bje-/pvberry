@@ -134,23 +134,7 @@ void setup()
 
     Serial.begin(9600);
     Serial.println("Welcome to the PVBerry!");
-    Serial.println();
 
-    // When using integer maths, calibration values that have been
-    // supplied in floating point form need to be rescaled.
-
-    // When using integer maths, the SIZE of the ENERGY BUCKET is altered to match the
-    // scaling of the energy detection mechanism that is in use.  This avoids the need
-    // to re-scale every energy contribution, thus saving processing time.  This process
-    // is described in more detail in the function, allGeneralProcessing(), just before
-    // the energy bucket is updated at the start of each new cycle of the mains.
-    //
-    // An electricity meter has a small range over which energy can ebb and flow without
-    // penalty.  This has been termed its "sweet-zone".  For optimal performance, the energy
-    // bucket of a PV Router should match this value.  The sweet-zone value is therefore
-    // included in the calculation below.
-    //
-    // For the flow of energy at the 'grid' connection point (CT1)
     capacityOfEnergyBucket_long =
         (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal);
     energyInBucket_long = 0;
@@ -291,9 +275,9 @@ void allGeneralProcessing()
                     // when above the upper threshold, turn the load ON
                     nextStateOfLoad = LOAD_ON;
                 }
-                // (else) otherwise, leave the load's state unchanged (hysteresis)
+                // otherwise, leave the load's state unchanged (hysteresis)
 
-                // set the Arduino's output pin accordingly
+                // set the output pin accordingly
                 digitalWrite(outputForTrigger, nextStateOfLoad);
             }
         }
