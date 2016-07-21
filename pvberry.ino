@@ -15,7 +15,6 @@
 #include <Arduino.h>
 #include <TimerOne.h>
 
-#include "myassert.h"
 
 // uS (determines the sampling rate / amount of idle time)
 const int ADC_TIMER_PERIOD = 125;
@@ -132,9 +131,6 @@ void setup()
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF);
 
-    Serial.begin(9600);
-    Serial.println("Welcome to the PVBerry!");
-
     capacityOfEnergyBucket_long =
         (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal);
     energyInBucket_long = 0;
@@ -182,8 +178,6 @@ void timerIsr(void)
         ADCSRA |= (1 << ADSC);            // start a conversion
         state = 0;
         break;
-    default:
-        unreachable();
     }
 }
 
@@ -242,7 +236,6 @@ void allGeneralProcessing()
                 sampleCount_forContinuityChecker++;
                 if (sampleCount_forContinuityChecker >= CONTINUITY_CHECK_MAXCOUNT) {
                     sampleCount_forContinuityChecker = 0;
-                    // Serial.println(lowestNoOfSampleSetsPerMainsCycle);
                     lowestNoOfSampleSetsPerMainsCycle = 999;
                 }
 
@@ -259,7 +252,6 @@ void allGeneralProcessing()
                     sampleSetsDuringThisMainsCycle = 0; // not yet dealt with for this cycle
                     sampleCount_forContinuityChecker = 1; // opportunity has been missed for this cycle
                     lowestNoOfSampleSetsPerMainsCycle = 999;
-                    Serial.println ("Ready.");
                 }
             }
         } // end of processing that is specific to the first Vsample in each +ve half cycle
