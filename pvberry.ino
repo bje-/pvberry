@@ -15,6 +15,7 @@
 #include <Arduino.h>
 #include <TimerOne.h>
 
+#include <avr8-stub.h>
 
 // uS (determines the sampling rate / amount of idle time)
 const int ADC_TIMER_PERIOD = 125;
@@ -119,6 +120,8 @@ void setup()
 #if 0
     wdt_enable(WDTO_8S);
 #endif
+
+    debug_init();
 
     for (int pinNo = 4; pinNo < 8; pinNo++) {
         pinMode(pinNo, OUTPUT);
