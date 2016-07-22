@@ -274,6 +274,7 @@ DEPFILES := $(patsubst %, .dep/%.dep, $(SOURCES))
 ARDUINOLIB := .lib/arduino.a
 ARDUINOLIBOBJS := $(foreach dir, $(ARDUINOCOREDIR) $(LIBRARYDIRS), \
 	$(patsubst %, .lib/%.o, $(wildcard $(addprefix $(dir)/, *.c *.cpp))))
+ARDUINOLIBOBJS := $(filter-out .lib/$(ARDUINOCOREDIR)/HardwareSerial.cpp.o, $(ARDUINOLIBOBJS))
 BOOTLOADERHEX := $(addprefix \
 	$(ARDUINODIR)/hardware/arduino/bootloaders/$(BOARD_BOOTLOADER_PATH)/, \
 	$(BOARD_BOOTLOADER_FILE))
