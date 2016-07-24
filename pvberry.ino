@@ -116,13 +116,8 @@ class EnergyBucket {
 public:
     EnergyBucket()
     {
-        // in Integer Energy Units (IEU)
-        level = 0;
-
-        // depends on powerCal, frequency and the 'sweetzone' size
-        capacity = 0;
-
-        // for turning the load on/off
+        level = 0;  // in Integer Energy Units (IEU)
+        capacity = 0; // depends on powerCal, freq and the 'sweetzone' size
         lowerThreshold = 0;
         upperThreshold = 0;
     }
@@ -137,6 +132,7 @@ public:
 
     long level;
     long capacity;
+    // for turning the load on/off
     long lowerThreshold;
     long upperThreshold;
 } energybucket;
