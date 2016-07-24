@@ -47,11 +47,6 @@ const int DCoffset_I = 512;    // nominal mid-point value of ADC @ x1 scale
 // For integer maths, many variables need to be longs.
 
 boolean beyondStartUpPhase = false; // start-up delay, allows things to settle
-long energyInBucket_long;           // in Integer Energy Units (IEU)
-long capacityOfEnergyBucket_long;   // depends on powerCal, frequency & the 'sweetzone' size.
-
-long lowerEnergyThreshold_long;     // for turning load off
-long upperEnergyThreshold_long;     // for turning load on
 
 // for low-pass filter
 long DCoffset_V_long;
@@ -115,6 +110,37 @@ private:
     unsigned int index;
 } boolbuf;
 
+// The energy bucket
+
+class EnergyBucket {
+public:
+    EnergyBucket()
+    {
+        // in Integer Energy Units (IEU)
+        level = 0;
+
+        // depends on powerCal, frequency and the 'sweetzone' size
+        capacity = 0;
+
+        // for turning the load on/off
+        lowerThreshold = 0;
+        upperThreshold = 0;
+    }
+    void add(long energy)
+    {
+        level += energy;
+        if (level > capacity)
+            level = capacity;
+        else if (level < 0)
+            level = 0;
+    }
+
+    long level;
+    long capacity;
+    long lowerThreshold;
+    long upperThreshold;
+} energybucket;
+
 void setup()
 {
 #if 0
@@ -134,9 +160,10 @@ void setup()
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF);
 
-    capacityOfEnergyBucket_long =
-        (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal);
-    energyInBucket_long = 0;
+    long capacity = (long)WORKING_RANGE_IN_JOULES * CYCLES_PER_SECOND * (1/powerCal);
+    energybucket.capacity = capacity;
+    energybucket.lowerThreshold = capacity * (0.5 - offsetOfEnergyThresholdsInAFmode);
+    energybucket.upperThreshold = capacity * (0.5 + offsetOfEnergyThresholdsInAFmode);
 
     // Define operating limits for the LP filter which identifies DC offset in the voltage
     // sample stream.  By limiting the output range, the filter always should start up
@@ -153,11 +180,6 @@ void setup()
 
     Timer1.initialize(ADC_TIMER_PERIOD);
     Timer1.attachInterrupt(timerIsr);
-
-    lowerEnergyThreshold_long =
-        capacityOfEnergyBucket_long * (0.5 - offsetOfEnergyThresholdsInAFmode);
-    upperEnergyThreshold_long =
-        capacityOfEnergyBucket_long * (0.5 + offsetOfEnergyThresholdsInAFmode);
 }
 
 
@@ -226,14 +248,7 @@ void allGeneralProcessing()
                 // the actual energy in J.
                 long realEnergy = realPower;
 
-                energyInBucket_long += realEnergy;
-
-                // Apply max and min limits to bucket's level.  This is to ensure correct operation
-                // when conditions change, i.e. when import changes to export, and vice-versa.
-                if (energyInBucket_long > capacityOfEnergyBucket_long)
-                    energyInBucket_long = capacityOfEnergyBucket_long;
-                else if (energyInBucket_long < 0)
-                    energyInBucket_long = 0;
+                energybucket.add(realEnergy);
 
                 // continuity checker
                 sampleCount_forContinuityChecker++;
@@ -263,10 +278,10 @@ void allGeneralProcessing()
         // check to see whether the trigger device can now be reliably armed
         if (sampleSetsDuringThisMainsCycle == 3) { // much easier than checking the voltage level
             if (beyondStartUpPhase) {
-                if (energyInBucket_long < lowerEnergyThreshold_long) {
+                if (energybucket.level < energybucket.lowerThreshold) {
                     // when below the lower threshold, turn the load OFF
                     nextStateOfLoad = LOAD_OFF;
-                } else if (energyInBucket_long > upperEnergyThreshold_long) {
+                } else if (energybucket.level > energybucket.upperThreshold) {
                     // when above the upper threshold, turn the load ON
                     nextStateOfLoad = LOAD_ON;
                 }
