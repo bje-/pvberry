@@ -28,8 +28,8 @@
 #define NEGATIVE 0
 #define CYCLES_PER_SECOND 50
 
-byte sensorPin_V = 3;
-byte sensorPin_I1 = 5;
+byte sensorPin_V = 0;
+byte sensorPin_I1 = 1;
 byte sensorPin_I2 = 4;
 
 long cycleCount = 0;
@@ -114,7 +114,7 @@ void loop() // each iteration of loop is for one set of measurements only
   
   int sample_V = analogRead(sensorPin_V);     // from the inbuilt voltage sensor
   int sample_I1 = analogRead(sensorPin_I1);   // from CT1
-  int sample_I2 = analogRead(sensorPin_I2);   // from CT
+  int sample_I2 = 0;
   float filtered_V = 0.996*(lastFiltered_V + sample_V - lastSample_V); 
 
   byte polarityOfThisSample_V;
@@ -132,17 +132,18 @@ void loop() // each iteration of loop is for one set of measurements only
           Serial.print ("No of cycles recorded = ");
           Serial.println (cycleNumberBeingRecorded);      
           dispatch_recorded_data(); } 
-        else {
-          cycleNumberBeingRecorded++; } }    
-
+        else
+          cycleNumberBeingRecorded++;
+      }
       else
       if((cycleCount % CYCLES_PER_SECOND) == 1) {  
         unsigned long timeNow = millis();   
         if (timeNow > recordingMayStartAt) {
            recordingNow = true;
            cycleNumberBeingRecorded++; } 
-        else  {
-          Serial.println((int)(recordingMayStartAt - timeNow) / 1000); } }    
+        else
+          Serial.println((int)(recordingMayStartAt - timeNow) / 1000);
+      }
     } // end of specific processing for first +ve reading in each mains cycle
     
   } // end of specific processing of +ve cycles
