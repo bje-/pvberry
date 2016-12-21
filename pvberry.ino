@@ -142,15 +142,14 @@ void setup()
     wdt_enable(WDTO_8S);
 #endif
 
-    debug_init();
+    // LED on pin 13 is the power indicator
+    pinMode(13, OUTPUT);
+    digitalWrite(13, HIGH);
 
-    for (int pinNo = 4; pinNo < 8; pinNo++) {
-        pinMode(pinNo, OUTPUT);
-        digitalWrite(pinNo, HIGH);
-        delay(250);
-    }
-    for (int i = 4; i < 8; i++)
-        digitalWrite(i, LOW);
+    // LED on pin 12 is the divert indicator which fades between 0%
+    // and 100% load diversion
+    pinMode(12, OUTPUT);
+    digitalWrite(12, LOW);
 
     pinMode(outputForTrigger, OUTPUT);
     digitalWrite(outputForTrigger, LOAD_OFF);
@@ -311,20 +310,10 @@ void allGeneralProcessing()
         // note the current state of the load for this cycle
         boolbuf.insert(nextStateOfLoad == LOAD_ON);
 
-        // count # of cycles in the last 100 that the load was on
+        // count # of cycles in the last 256 that the load was on
+	// then we can write this value as the LED brightness
         int oncycles = boolbuf.count();
-        for (int i = 4; i < 8; i++)
-            digitalWrite(i, LOW);
-
-        if (oncycles > 75)
-            digitalWrite(4, HIGH);
-        if (oncycles > 50)
-            digitalWrite(5, HIGH);
-        if (oncycles > 25)
-            digitalWrite(6, HIGH);
-        if (oncycles > 0)
-            digitalWrite(7, HIGH);
-
+	analogWrite(12, oncycles);
 
         // processing for EVERY set of I, V samples
 
