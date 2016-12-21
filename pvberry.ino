@@ -15,8 +15,6 @@
 #include <Arduino.h>
 #include <TimerOne.h>
 
-#include <avr8-stub.h>
-
 // uS (determines the sampling rate / amount of idle time)
 const int ADC_TIMER_PERIOD = 125;
 
