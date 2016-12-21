@@ -80,8 +80,8 @@ const byte powerChannelSelectorPin = 3; // <-- with the internal pullup
 // A1 (D15) is a driver line for the 4-digit display (segment E, via series resistor)
 // A2 (D16) is not used 
 const byte voltageSensor = 7;          // A0 is for the voltage sensor
-const byte currentSensor_diverted = 9; // A2 is for CT2 which measures diverted current
-const byte currentSensor_grid = 8;     // A1 is for CT1 which measures grid current
+const byte currentSensor_diverted = 5; // A2 is for CT2 which measures diverted current
+const byte currentSensor_grid = 6;     // A1 is for CT1 which measures grid current
 
 
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
@@ -145,7 +145,7 @@ int sampleV;
 // powerCal is the RECIPR0CAL of the power conversion rate.  A good value 
 // to start with is therefore 1/20 = 0.05 (Watts per ADC-step squared)
 //
-const float powerCal_grid = 0.05;  // for CT1
+const float powerCal_grid = 0.073;  // for CT1
 const float powerCal_diverted = 0.05;  // for CT2
  
 
@@ -320,7 +320,7 @@ void setup()
   Serial.println ( " uS fixed timer");
 
   // Set up the ADC to be triggered by a hardware timer of fixed duration  
-  ADCSRA  = (0<<ADPS0)+(1<<ADPS1)+(1<<ADPS2);  // Set the ADC's clock to system clock / 64
+  ADCSRA  = (1<<ADPS0)+(1<<ADPS1)+(1<<ADPS2);  // Set the ADC's clock to system clock / 128
   ADCSRA |= (1 << ADEN);                 // Enable ADC
 
   Timer1.initialize(ADC_TIMER_PERIOD);   // set Timer1 interval
