@@ -88,7 +88,7 @@ public:
 
     void insert(bool item)
     {
-        if (index >= 100)
+        if (index >= sz)
             index = 0;
         buf[index] = item;
         index++;
@@ -97,14 +97,15 @@ public:
     int count()
     {
         int result = 0;
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < sz; i++)
             if (buf[i])
                 result++;
         return result;
     }
 
 private:
-    bool buf[100];
+    static const int sz = 256;
+    bool buf[sz];
     unsigned int index;
 } boolbuf;
 
