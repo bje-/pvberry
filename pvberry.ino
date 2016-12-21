@@ -34,7 +34,7 @@ void timerIsr(void);
 void allGeneralProcessing();
 void confirmPolarity();
 
-const byte outputForTrigger = 3;
+const byte outputForTrigger = 5;
 const byte voltageSensor = 7;          // A0 is the voltage sensor (ADC7)
 const byte currentSensor = 6;          // A1 is the current sensor (ADC6)
 
