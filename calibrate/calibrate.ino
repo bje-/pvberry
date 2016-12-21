@@ -233,8 +233,6 @@ void allGeneralProcessing()
   // determine the polarity of the latest voltage sample
   enum polarities polarityNow = (sampleVminusDC_long > 0) ? POSITIVE : NEGATIVE;
 
-  Serial.println("Here! " + String(sampleV));
-
   if (polarityNow == POSITIVE) 
   { 
     if (beyondStartUpPhase)
@@ -333,9 +331,6 @@ void allGeneralProcessing()
   //
   // First, deal with the power at the grid connection point (as measured via CT1)
   // remove most of the DC offset from the current sample (the precise value does not matter)
-
-  Serial.println("I: " + String(sampleI) + ", V: " + String(sampleV));
-
   long sampleIminusDC = ((long)(sampleI-DCoffset_I))<<8;
    
   // phase-shift the voltage waveform so that it aligns with the grid current waveform
@@ -347,7 +342,6 @@ void allGeneralProcessing()
   long filtI_div4 = sampleIminusDC>>2; // reduce to 16-bits (now x64, or 2^6)
   long instP = filtV_div4 * filtI_div4;  // 32-bits (now x4096, or 2^12)
   instP = instP>>12;     // scaling is now x1, as for Mk2 (V_ADC x I_ADC)
-  Serial.println("P: " + String(instP));
   sumP +=instP; // cumulative power, scaling as for Mk2 (V_ADC x I_ADC)
   
   samplesDuringThisCycle++;
