@@ -37,8 +37,8 @@ void allGeneralProcessing();
 void confirmPolarity();
 
 const byte outputForTrigger = 3;
-const byte voltageSensor = 3;          // A3 is for the voltage sensor
-const byte currentSensor = 4;          // A4 is for CT measuring grid current
+const byte voltageSensor = 7;          // A0 is the voltage sensor (ADC7)
+const byte currentSensor = 6;          // A1 is the current sensor (ADC6)
 
 const byte startUpPeriod = 3;  // in seconds, to allow LP filter to settle
 const int DCoffset_I = 512;    // nominal mid-point value of ADC @ x1 scale
@@ -77,7 +77,7 @@ int sampleSetsDuringThisMainsCycle;
 int lowestNoOfSampleSetsPerMainsCycle;
 
 // calibration factor
-const float powerCal = 0.091;
+const float powerCal = 0.073;
 
 // A data type that holds 100 bools in a circular fashion.
 
